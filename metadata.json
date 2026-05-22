@@ -1,0 +1,6 @@
+{
+  "name": "xchange",
+  "description": "An interactive EdTech skill-swap platform featuring a peer student profile, digital token wallet, secure study workspace, and a matching engine with simulated premium mentor paths.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
