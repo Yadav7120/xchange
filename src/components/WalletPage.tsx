@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Coins, 
@@ -6,144 +6,93 @@ import {
   ArrowDownLeft, 
   Search, 
   Filter, 
-  Plus, 
   Sparkles, 
   ArrowLeft, 
-  Trash2, 
   TrendingUp, 
   TrendingDown, 
-  Bookmark, 
   Info,
   QrCode,
   Share2,
   Wallet,
   CheckCircle,
   HelpCircle,
-  X
+  Lock,
+  ArrowRight
 } from "lucide-react";
-import { Transaction } from "../types";
+import { CurrentUser } from "./AuthPage";
+
+interface Transaction {
+  id: string;
+  type: "earn" | "spend";
+  amount: number;
+  description: string;
+  date: string;
+}
 
 interface WalletPageProps {
   onBackToLanding: () => void;
   onNavigateToProfile: () => void;
+  currentUser: CurrentUser | null;
+  onUpdateUser: (user: CurrentUser) => void;
 }
 
-export function WalletPage({ onBackToLanding, onNavigateToProfile }: WalletPageProps) {
-  // Current Active Wallet Balance (starts at high value or configurable)
-  const [tokens, setTokens] = useState(140);
-  
-  // Interactive Simulator States
-  const [testDescription, setTestDescription] = useState("");
-  const [testType, setTestType] = useState<"earn" | "spend">("earn");
-  const [testAmount, setTestAmount] = useState(10);
+export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, onUpdateUser }: WalletPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "earn" | "spend">("all");
 
-  // Success feedback text when simulating a transaction
-  const [feedbackMsg, setFeedbackMsg] = useState("");
-
-  // Preset core transactions requested by user description:
-  // e.g. Taught Python — +10 tokens, Learned UI Design — -10 tokens
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    {
-      id: "tx-1",
-      type: "earn",
-      amount: 10,
-      description: "Taught Python",
-      date: "May 22, 2026, 03:14 PM"
-    },
-    {
-      id: "tx-2",
-      type: "spend",
-      amount: 10,
-      description: "Learned UI Design",
-      date: "May 21, 2026, 11:45 AM"
-    },
-    {
-      id: "tx-3",
-      type: "earn",
-      amount: 40,
-      description: "Taught Advanced React frameworks to Marcus",
-      date: "May 19, 2026, 02:20 PM"
-    },
-    {
-      id: "tx-4",
-      type: "spend",
-      amount: 20,
-      description: "Learned Guitar lesson 1 with Marcus",
-      date: "May 18, 2026, 04:00 PM"
-    },
-    {
-      id: "tx-5",
-      type: "earn",
-      amount: 10,
-      description: "Welcome signup token bonus",
-      date: "May 15, 2026, 09:00 AM"
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    if (!currentUser) return [];
+    const saved = localStorage.getItem(`xchange_tx_history_${currentUser.email}`);
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
     }
-  ]);
+    // Default initial transactions showing welcome tokens
+    return [
+      {
+        id: "tx-init",
+        type: "earn",
+        amount: 30,
+        description: "Welcome grant for joining xchange",
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      }
+    ];
+  });
 
-  // Insert a simulated transaction
-  const handleSimulateTransaction = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!testDescription.trim()) return;
-
-    if (testType === "spend" && tokens < testAmount) {
-      alert("Insufficient credit tokens! Teach other students first to accumulate xchange tokens.");
-      return;
+  // Keep transactions in sync with localStorage
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem(`xchange_tx_history_${currentUser.email}`, JSON.stringify(transactions));
     }
+  }, [transactions, currentUser]);
 
-    const newTx: Transaction = {
-      id: `sim-tx-${Date.now()}`,
-      type: testType,
-      amount: testAmount,
-      description: testDescription.trim(),
-      date: new Date().toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true
-      })
-    };
+  const tokens = currentUser?.tokens ?? 30;
 
-    setTransactions(prev => [newTx, ...prev]);
-    setTokens(prev => testType === "earn" ? prev + testAmount : prev - testAmount);
-    
-    // Provide nice flash feedback
-    setFeedbackMsg(`Successfully logged transaction! Balance adjusted by ${testType === "earn" ? "+" : "-"}${testAmount} tokens.`);
-    setTestDescription("");
-    
-    setTimeout(() => {
-      setFeedbackMsg("");
-    }, 4000);
-  };
-
-  // Helper values for wallet dashboard stats
+  // Calculate totals
   const totalEarned = transactions
-    .filter(t => t.type === "earn")
-    .reduce((sum, current) => sum + current.amount, 0);
+    .filter(tx => tx.type === "earn")
+    .reduce((sum, tx) => sum + tx.amount, 0);
 
   const totalSpent = transactions
-    .filter(t => t.type === "spend")
-    .reduce((sum, current) => sum + current.amount, 0);
+    .filter(tx => tx.type === "spend")
+    .reduce((sum, tx) => sum + tx.amount, 0);
 
-  // Search/Filter matching logic
-  const filteredTransactions = transactions.filter(tx => {
-    const matchesSearch = tx.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = activeFilter === "all" || tx.type === activeFilter;
-    return matchesSearch && matchesFilter;
+  // Filtered list
+  const filteredTxs = transactions.filter(tx => {
+    const filterMatches = activeFilter === "all" || tx.type === activeFilter;
+    const searchMatches = tx.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          tx.date.toLowerCase().includes(searchQuery.toLowerCase());
+    return filterMatches && searchMatches;
   });
 
   return (
-    <div className="pt-24 min-h-screen bg-slate-50 selection:bg-indigo-100 selection:text-indigo-900">
-      <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="pt-24 min-h-screen bg-slate-50">
+      <div className="max-w-6xl mx-auto px-6 py-8">
         
-        {/* Navigation Breadcrumb back to landing */}
+        {/* Navigation Breadcrumb row */}
         <div className="mb-8 flex items-center justify-between">
           <button 
             onClick={onBackToLanding}
-            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 font-medium transition-colors cursor-pointer"
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 font-medium transition-colors cursor-pointer text-sm"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Public Homepage
@@ -151,103 +100,70 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile }: WalletPageP
           
           <button 
             onClick={onNavigateToProfile}
-            className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 transition-colors px-4 py-2 rounded-xl"
+            className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 bg-indigo-50 hover:bg-indigo-100/80 transition-colors px-4 py-2 rounded-xl"
           >
-            Manage Skills Workspace
+            My Profile Page
           </button>
         </div>
 
-        {/* Dashboard Title Header */}
-        <div className="mb-10 text-center max-w-xl mx-auto">
-          <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full mb-3 uppercase tracking-wider inline-block">
-            Token Ledger
-          </span>
-          <h1 className="text-3xl md:text-4xl font-heading font-black text-slate-900 tracking-tight leading-none mb-3">
-            Your Skill Exchange Ledger
-          </h1>
-          <p className="text-slate-600 text-sm">
-            Tutor schoolmates to pile up points, then swap them directly for physical knowledge exchanges. Zero cash necessary.
-          </p>
-        </div>
-
-        {/* Real-time notification toast */}
-        <AnimatePresence>
-          {feedbackMsg && (
-            <motion.div 
-              initial={{ opacity: 0, y: -15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-6 flex items-center gap-3 text-emerald-800 text-xs font-semibold shadow-sm"
-            >
-              <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span>{feedbackMsg}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Main Grid: Left Side Ledger Balance cards, Right Side Detailed Logs */}
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
+        {/* Hero wallet dashboard structure */}
+        <div className="grid lg:grid-cols-12 gap-8 items-stretch">
           
-          {/* LEFT COLUMN: Large Token card + Simulator Actions (5 cols) */}
-          <div className="lg:col-span-5 space-y-6">
+          {/* Left card Column: Token balance values */}
+          <div className="lg:col-span-5 flex flex-col justify-between space-y-6">
             
-            {/* Big Token Balance Card */}
-            <div className="bg-slate-900 text-white rounded-3xl p-8 border border-slate-800 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-5">
-                <Coins className="w-44 h-44 text-yellow-500 animate-spin-slow" />
-              </div>
+            {/* Dark balance display */}
+            <div className="bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-900 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden flex-1 flex flex-col justify-between min-h-[300px]">
               
-              {/* Card visual elements */}
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center">
-                    <Wallet className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-300 font-heading">Alex Mercer</p>
-                    <p className="text-[10px] text-slate-400">Class of 2027</p>
-                  </div>
+              <div className="absolute top-0 right-0 p-4 opacity-5">
+                <Coins className="w-48 h-48" />
+              </div>
+
+              {/* Sub-header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-indigo-300">
+                  <Wallet className="w-4 h-4" />
+                  <span className="font-bold text-xs uppercase tracking-widest">xchange Wallet</span>
                 </div>
-                
-                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-bold px-3 py-1 rounded-full border border-indigo-400/20">
-                  xchange Standard
+                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-bold px-2.5 py-1 rounded-full border border-indigo-400/20 uppercase">
+                  Verified Wallet Node
                 </span>
               </div>
 
               {/* Huge Balance display */}
-              <div className="space-y-1 mb-8">
+              <div className="space-y-1 my-6 text-left">
                 <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Current Account Balance</p>
                 <div className="flex items-baseline gap-2.5">
                   <span className="text-6xl font-black font-heading tracking-tight text-white animate-fade-in">
                     {tokens}
                   </span>
-                  <span className="text-sm font-semibold text-slate-305 bg-indigo-650 px-2.5 py-0.5 rounded-full text-indigo-200">
-                    Tokens (cr)
+                  <span className="text-sm font-semibold text-slate-35 bg-indigo-600 px-3 py-1 rounded-full text-indigo-100">
+                    Xtoken
                   </span>
                 </div>
               </div>
 
               {/* Progress feedback bar */}
-              <div className="space-y-2 text-xs">
+              <div className="space-y-2 text-xs text-left">
                 <div className="flex justify-between items-center text-slate-400">
-                  <span>Usage Rating: Good standing</span>
-                  <span>{tokens >= 10 ? "Can buy 1+ class" : "Low: Need to teach!"}</span>
+                  <span className="font-semibold text-[10px] uppercase">Account Liquidity Status</span>
+                  <span className="font-bold text-indigo-300">{tokens >= 10 ? "Good standing" : "Low: Need to teach!"}</span>
                 </div>
                 <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-500" 
-                    style={{ width: `${Math.min((tokens / 200) * 100, 100)}%` }}
+                    style={{ width: `${Math.min((tokens / 100) * 100, 100)}%` }}
                   />
                 </div>
               </div>
 
               {/* Statistics panels row */}
-              <div className="grid grid-cols-2 gap-4 pt-6 mt-6 border-t border-slate-800 text-xs">
+              <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-800 text-left text-xs">
                 <div className="bg-slate-800/40 p-3.5 rounded-2xl border border-slate-800/50">
                   <span className="text-slate-400 block mb-1 font-medium">Total Earned</span>
                   <p className="text-lg font-bold text-emerald-400 flex items-center gap-1">
                     <TrendingUp className="w-3.5 h-3.5" />
-                    +{totalEarned} cr
+                    +{totalEarned} Xtoken
                   </p>
                 </div>
 
@@ -255,256 +171,169 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile }: WalletPageP
                   <span className="text-slate-400 block mb-1 font-medium">Total Spent</span>
                   <p className="text-lg font-bold text-purple-400 flex items-center gap-1">
                     <TrendingDown className="w-3.5 h-3.5" />
-                    -{totalSpent} cr
+                    -{totalSpent} Xtoken
                   </p>
                 </div>
               </div>
 
             </div>
 
-            {/* Faucet / Transaction simulator */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-4">
+            {/* AUTOMATED NETWORK POLICY (REPLACES MANUAL SIMULATOR) */}
+            <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4 text-left">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+                <Sparkles className="w-4 h-4 text-indigo-650 shrink-0" />
                 <h3 className="font-heading font-bold text-sm text-slate-900 uppercase tracking-wider">
-                  Exchange Simulator
+                  Communal Exchange Policies
                 </h3>
               </div>
-              <p className="text-xs text-slate-500 leading-normal">
-                Simulate completed teaching sessions or learned skills to instantly increment or decrement your wallet ledger in real time.
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Skill trading runs on automated, direct micro-transfers. No manual adjustments or financial wire approvals are required. Take note of the core exchange framework:
               </p>
 
-              <form onSubmit={handleSimulateTransaction} className="space-y-4 pt-2 border-t border-slate-100">
-                {/* Simulated text */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Description of Class Swap</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={testDescription}
-                    onChange={(e) => setTestDescription(e.target.value)}
-                    placeholder="e.g. Taught Python fundamentals to Sofia"
-                    className="w-full text-xs bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                {/* Simulated action types */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setTestType("earn");
-                      setTestAmount(10);
-                    }}
-                    className={`text-xs py-2 px-3 rounded-xl font-semibold transition-all cursor-pointer ${
-                      testType === "earn" 
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200 ring-1 ring-emerald-300" 
-                        : "bg-slate-50 text-slate-650 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                  >
-                    Teach (+10 tokens)
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setTestType("spend");
-                      setTestAmount(10);
-                    }}
-                    className={`text-xs py-2 px-3 rounded-xl font-semibold transition-all cursor-pointer ${
-                      testType === "spend" 
-                        ? "bg-purple-100 text-purple-700 border border-purple-200 ring-1 ring-purple-300" 
-                        : "bg-slate-50 text-slate-650 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                  >
-                    Learn (-10 tokens)
-                  </button>
-                </div>
-
-                {/* Amount selection */}
-                <div className="flex items-center justify-between text-xs pt-1.5">
-                  <span className="text-slate-500 font-semibold">Step size multiplier:</span>
-                  <div className="flex gap-1">
-                    {[10, 20, 40].map((amt) => (
-                      <button 
-                        key={amt}
-                        type="button"
-                        onClick={() => setTestAmount(amt)}
-                        className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all ${
-                          testAmount === amt 
-                            ? "bg-slate-900 text-white" 
-                            : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                        }`}
-                      >
-                        {amt}cr
-                      </button>
-                    ))}
+              <div className="space-y-3 pt-3 border-t border-slate-100 text-xs">
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1 px-2 bg-indigo-50 text-indigo-700 font-bold font-mono rounded text-[10px] shrink-0 mt-0.5">
+                    +10cr
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 leading-tight">Teaching Rewards</h4>
+                    <p className="text-[11px] text-slate-450 mt-0.5">Automatically added to your wallet balance when you initiate and finalize a tutoring session as an instructor.</p>
                   </div>
                 </div>
 
-                <button 
-                  type="submit"
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 rounded-xl transition-all shadow-sm"
-                >
-                  Post Simulated Transaction
-                </button>
-              </form>
+                <div className="flex items-start gap-2.5">
+                  <div className="p-1 px-2 bg-purple-50 text-purple-700 font-bold font-mono rounded text-[10px] shrink-0 mt-0.5">
+                    -10cr
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 leading-tight">Booking debits</h4>
+                    <p className="text-[11px] text-slate-450 mt-0.5">Immediately subtracted from your wallet ledger once you look up and secure active skill swaps on the Match Finder.</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* QR Code section */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex items-center gap-4">
-              <div className="w-16 h-16 bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-center shrink-0">
-                <QrCode className="w-8 h-8 text-slate-700" />
+            {/* QR Code static address */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex items-center gap-4 text-left">
+              <div className="w-16 h-16 bg-slate-50 rounded-xl border border-slate-150 flex items-center justify-center shrink-0">
+                <QrCode className="w-8 h-8 text-slate-600" />
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900">Exchange ID Code</p>
-                <p className="text-[10px] text-slate-500 text-ellipsis overflow-hidden mt-0.5">student-928-mercer-alex</p>
-                <div className="flex gap-3 mt-2 text-[10px] font-semibold text-indigo-600">
-                  <button className="hover:underline cursor-pointer">Copy Address</button>
-                  <button className="hover:underline cursor-pointer">Request Swap</button>
-                </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">My Swapper Address</h4>
+                <p className="text-[10px] text-slate-450 font-mono truncate select-all bg-slate-50 border p-1 rounded mt-1">
+                  xch-{currentUser?.email ? btoa(currentUser.email).slice(0, 15) : "node-address"}
+                </p>
+                <span className="text-[8px] text-slate-400 block mt-1">Scannable address for direct token transfers.</span>
               </div>
             </div>
 
           </div>
 
-          {/* RIGHT COLUMN: Detailed Transaction Logs Table (7 cols) */}
-          <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-100 shadow-xl overflow-hidden min-h-[500px] flex flex-col justify-between">
+          {/* Right Column: Transaction Logs lists */}
+          <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-sm flex flex-col justify-between">
             
-            <div>
-              {/* Ledger Tab Header bar */}
-              <div className="p-6 md:p-8 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
-                <div>
-                  <h3 className="font-heading font-black text-xl text-slate-900">
-                    Transaction History
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Detailed breakdown of your skill trades and token transactions.
-                  </p>
+            <div className="space-y-6">
+              
+              {/* Header Title block */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="text-left">
+                  <h3 className="font-heading font-black text-xl text-slate-900">Ledger History</h3>
+                  <p className="text-xs text-slate-450">Verified cryptographical exchange receipts on the xchange network</p>
                 </div>
 
-                <div className="flex gap-1 text-[11px] font-bold">
-                  {[
-                    { id: "all", label: "All Logs" },
-                    { id: "earn", label: "Taught (+)" },
-                    { id: "spend", label: "Learned (-)" }
-                  ].map((filterTab) => (
-                    <button 
-                      key={filterTab.id}
-                      onClick={() => setActiveFilter(filterTab.id as any)}
-                      className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                        activeFilter === filterTab.id 
-                          ? "bg-slate-900 text-white" 
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                {/* Filter Selector tabs */}
+                <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-center">
+                  {(["all", "earn", "spend"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setActiveFilter(mode)}
+                      className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg border uppercase tracking-wider transition-colors cursor-pointer ${
+                        activeFilter === mode 
+                          ? "bg-slate-900 border-slate-950 text-white font-semibold" 
+                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                       }`}
                     >
-                      {filterTab.label}
+                      {mode}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Search bar inside logs */}
-              <div className="px-6 md:px-8 py-3 border-b border-slate-100 bg-white flex items-center gap-2">
-                <Search className="w-4 h-4 text-slate-400 shrink-0" />
+              {/* Search Field inside Transaction logs */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input 
                   type="text" 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search your history (e.g. Python, UI Design)..."
-                  className="w-full text-xs text-slate-800 bg-transparent focus:outline-none placeholder:text-slate-400"
+                  placeholder="Filter transactions by topic, dates or student tags..."
+                  className="w-full bg-slate-50 py-2.5 pl-9 pr-4 rounded-xl border border-slate-205 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs font-semibold"
                 />
-                {searchQuery && (
-                  <button 
-                    onClick={() => setSearchQuery("")}
-                    className="p-1 text-slate-400 hover:text-slate-600 rounded-full"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
               </div>
 
-              {/* Transactions list stack */}
-              <div className="divide-y divide-slate-100 font-medium">
-                {filteredTransactions.map((tx) => (
-                  <div 
-                    key={tx.id} 
-                    className="p-6 hover:bg-slate-50/50 transition-colors flex items-center justify-between gap-4 animate-fade-in"
-                  >
-                    <div className="flex items-center gap-4 min-w-0 pr-2">
-                      {/* Icon based on transaction type */}
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
-                        tx.type === "earn" 
-                          ? "bg-green-50 border-green-100 text-green-700 animate-pulse-slow" 
-                          : "bg-purple-50 border-purple-100 text-purple-700"
-                      }`}>
-                        {tx.type === "earn" ? (
-                          <ArrowUpRight className="w-5 h-5" />
-                        ) : (
-                          <ArrowDownLeft className="w-5 h-5" />
-                        )}
+              {/* Transactions list layout */}
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                <AnimatePresence mode="popLayout">
+                  {filteredTxs.map((tx) => (
+                    <motion.div
+                      key={tx.id}
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="p-3.5 bg-slate-50/50 border border-slate-150/70 hover:bg-slate-55 rounded-2xl flex items-center justify-between gap-3 text-left transition-all"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Transaction Icon */}
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                          tx.type === "earn" 
+                            ? "bg-emerald-50 border-emerald-100 text-emerald-600" 
+                            : "bg-purple-50 border-purple-100 text-purple-600"
+                        }`}>
+                          {tx.type === "earn" ? (
+                            <ArrowUpRight className="w-4 h-4 font-bold" />
+                          ) : (
+                            <ArrowDownLeft className="w-4 h-4 font-bold" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-slate-800 truncate leading-snug">
+                            {tx.description}
+                          </h4>
+                          <p className="text-[9px] text-slate-400 font-mono mt-0.5">{tx.date}</p>
+                        </div>
                       </div>
 
-                      <div className="min-w-0">
-                        <h4 className="text-sm font-bold text-slate-900 truncate">
-                          {tx.description}
-                        </h4>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">{tx.date}</p>
+                      <div className="text-right shrink-0">
+                        <span className={`font-black font-heading text-sm ${
+                          tx.type === "earn" ? "text-emerald-600" : "text-purple-600"
+                        }`}>
+                          {tx.type === "earn" ? "+" : "-"}{tx.amount} Xtoken
+                        </span>
+                        <p className="text-[8px] text-slate-400 mt-0.5 uppercase tracking-widest font-bold">
+                          {tx.type === "earn" ? "Credits Earned" : "Debit Applied"}
+                        </p>
                       </div>
-                    </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
 
-                    <div className="text-right shrink-0">
-                      <span className={`font-black font-heading text-base ${
-                        tx.type === "earn" ? "text-emerald-600" : "text-purple-600"
-                      }`}>
-                        {tx.type === "earn" ? "+" : "-"}{tx.amount} Tokens
-                      </span>
-                      <p className="text-[10px] text-slate-450 mt-0.5">
-                        {tx.type === "earn" ? "Credit Earned" : "Debit Applied"}
-                      </p>
-                    </div>
-
-                  </div>
-                ))}
-
-                {filteredTransactions.length === 0 && (
-                  <div className="p-12 text-center text-slate-400 text-sm italic space-y-2">
-                    <p>No matching transaction logs found.</p>
-                    {searchQuery && (
-                      <button 
-                        onClick={() => setSearchQuery("")}
-                        className="text-xs text-indigo-600 underline font-semibold"
-                      >
-                        Clear search filter
-                      </button>
-                    )}
+                {filteredTxs.length === 0 && (
+                  <div className="p-12 text-center border-2 border-dashed border-slate-150 rounded-2xl space-y-2">
+                    <Info className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs font-bold text-slate-650">No transaction logs identified</p>
+                    <p className="text-[10px] text-slate-400 max-w-xs mx-auto">
+                      Search queries or toggle preferences yielded empty logs. Book reciprocal skills to register transaction blocks.
+                    </p>
                   </div>
                 )}
               </div>
+
             </div>
 
-            {/* Bottom info banner */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between gap-4 font-semibold">
-              <span className="flex items-center gap-1.5 leading-normal">
-                <Info className="w-4 h-4 text-slate-400 shrink-0" />
-                Transactions are recorded on the university xchange ledger instantly.
-              </span>
-              
-              <button 
-                onClick={() => {
-                  if (confirm("Are you sure you want to reset simulated transaction logs to default presets?")) {
-                    setTransactions([
-                      { id: "tx-1", type: "earn", amount: 10, description: "Taught Python", date: "May 22, 2026, 03:14 PM" },
-                      { id: "tx-2", type: "spend", amount: 10, description: "Learned UI Design", date: "May 21, 2026, 11:45 AM" },
-                      { id: "tx-5", type: "earn", amount: 10, description: "Welcome signup token bonus", date: "May 15, 2026, 09:00 AM" }
-                    ]);
-                    setTokens(10);
-                  }
-                }}
-                className="text-slate-400 hover:text-red-500 shrink-0 transition-colors p-1 hover:bg-slate-100 rounded"
-                title="Reset Simulation Ledger"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+            <div className="pt-6 border-t border-slate-100 text-xs text-slate-400 text-left leading-normal">
+              Receipts are signed securely by peer keys and processed in the cloud under ledger verification protocols. Transaction logs are stored locally for instant synchronization.
             </div>
 
           </div>

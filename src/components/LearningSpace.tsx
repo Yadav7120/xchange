@@ -24,14 +24,18 @@ import {
   Laptop
 } from "lucide-react";
 import { ChatMessage, NoteFile } from "../types";
+import { CurrentUser } from "./AuthPage";
 
 interface LearningSpaceProps {
   onBackToLanding: () => void;
+  currentUser: CurrentUser | null;
+  onUpdateUser: (user: CurrentUser) => void;
 }
 
-export function LearningSpace({ onBackToLanding }: LearningSpaceProps) {
+export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: LearningSpaceProps) {
   // Session states
   const [isJoined, setIsJoined] = useState(false);
+  const [showCompletionOptions, setShowCompletionOptions] = useState(false);
   const [roomName, setRoomName] = useState("xchange-calculus-guitar-swap");
   const [subject, setSubject] = useState("Calculus & Music Theory Swap");
   const [peerName, setPeerName] = useState("Marcus Vance");
@@ -40,6 +44,72 @@ export function LearningSpace({ onBackToLanding }: LearningSpaceProps) {
   // Jitsi iFrame room state configuration
   const jitsiBaseUrl = "https://meet.jit.si";
   const uniqueRoomUrl = `${jitsiBaseUrl}/${encodeURIComponent(roomName)}#config.prejoinPageEnabled=false&userInfo.displayName="Alex Mercer"`;
+
+  // Automatic billing transaction handlers
+  const handleSessionCompletion = (role: "teacher" | "learner" | "none") => {
+    setShowCompletionOptions(false);
+    setIsJoined(false);
+
+    if (role === "none" || !currentUser) {
+      return;
+    }
+
+    const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+    if (role === "teacher") {
+      // Earn 10 Xtokens
+      const updatedUser = {
+        ...currentUser,
+        tokens: currentUser.tokens + 10
+      };
+      
+      // Save transaction receipt
+      const savedTxs = localStorage.getItem(`xchange_tx_history_${currentUser.email}`);
+      let txs = [];
+      if (savedTxs) {
+        try { txs = JSON.parse(savedTxs); } catch (e) {}
+      }
+      txs.unshift({
+        id: `tx-completed-${Date.now()}`,
+        type: "earn",
+        amount: 10,
+        description: `Taught ${subject} to ${peerName}`,
+        date: todayStr
+      });
+      localStorage.setItem(`xchange_tx_history_${currentUser.email}`, JSON.stringify(txs));
+      onUpdateUser(updatedUser);
+      
+      alert(`Success! Automatic session calculation cleared. You earned +10 Xtokens!\nNew Balance: ${updatedUser.tokens} Xtokens.`);
+    } else if (role === "learner") {
+      // Spend 10 Xtokens
+      if (currentUser.tokens < 10) {
+        alert("Transaction Aborted! You do not have enough Xtokens in your wallet to fund this instruction. Please run a teaching session first to earn credits.");
+        return;
+      }
+      const updatedUser = {
+        ...currentUser,
+        tokens: currentUser.tokens - 10
+      };
+      
+      // Save transaction receipt
+      const savedTxs = localStorage.getItem(`xchange_tx_history_${currentUser.email}`);
+      let txs = [];
+      if (savedTxs) {
+        try { txs = JSON.parse(savedTxs); } catch (e) {}
+      }
+      txs.unshift({
+        id: `tx-completed-${Date.now()}`,
+        type: "spend",
+        amount: 10,
+        description: `Learned ${subject} from ${peerName}`,
+        date: todayStr
+      });
+      localStorage.setItem(`xchange_tx_history_${currentUser.email}`, JSON.stringify(txs));
+      onUpdateUser(updatedUser);
+      
+      alert(`Success! Automatic session calculation cleared. Subtracted 10 Xtokens!\nNew Balance: ${updatedUser.tokens} Xtokens.`);
+    }
+  };
 
   // Real-time Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -213,7 +283,7 @@ export function LearningSpace({ onBackToLanding }: LearningSpaceProps) {
               </button>
             ) : (
               <button 
-                onClick={() => setIsJoined(false)}
+                onClick={() => setShowCompletionOptions(true)}
                 className="w-full md:w-auto flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-md shadow-red-100 transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
@@ -463,6 +533,66 @@ export function LearningSpace({ onBackToLanding }: LearningSpaceProps) {
         </div>
 
       </div>
+
+      {/* AUTOMATED TRANSACTION CALCULATION POPUP MODAL */}
+      <AnimatePresence>
+        {showCompletionOptions && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl space-y-5 text-center"
+            >
+              <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto border border-indigo-100">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-lg font-black text-slate-800 font-heading">Automated Xtoken Settlement</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Session termination detected. Your swap was hosted on the secure peer-to-peer workspace. To settle the community network balance automatically, select your role:
+                </p>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <button 
+                  onClick={() => handleSessionCompletion("teacher")}
+                  className="w-full bg-indigo-650 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-indigo-100 transition-all cursor-pointer text-xs flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Video className="w-4 h-4 shrink-0" />
+                    I taught this session (+10 Xtoken)
+                  </span>
+                  <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold">+10 Xtoken</span>
+                </button>
+
+                <button 
+                  onClick={() => handleSessionCompletion("learner")}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-emerald-500/10 transition-all cursor-pointer text-xs flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <Laptop className="w-4 h-4 shrink-0" />
+                    I learned in this session (-10 Xtoken)
+                  </span>
+                  <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-mono font-bold">-10 Xtoken</span>
+                </button>
+
+                <button 
+                  onClick={() => handleSessionCompletion("none")}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-xl transition-all cursor-pointer text-xs"
+                >
+                  Just exit peer room (No balance transfer)
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net (default deny all)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
+    
+    function isOwner(userId) { 
+      return isSignedIn() && request.auth.uid == userId; 
+    }
+
+    // User profile matching
+    match /users/{userId} {
+      allow read: if isSignedIn(); // Verified peers can retrieve lists
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow delete: if false;
+    }
+
+    // User transactions matching (Belongs strictly to owner, read-only ledger)
+    match /users/{userId}/transactions/{transactionId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidTransaction(request.resource.data);
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Resource matching (Shared notes / class documents in academic library)
+    match /resources/{resourceId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidResource(request.resource.data);
+      allow update: if isSignedIn() && (request.resource.data.authorEmail == request.auth.token.email) && isValidResource(request.resource.data);
+      allow delete: if isSignedIn() && (resource.data.authorEmail == request.auth.token.email);
+    }
+
+    // Entity validation definitions
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'major', 'tokens'])
+        && data.name is string && data.name.size() <= 100
+        && data.email is string && data.email.size() <= 100
+        && data.major is string && data.major.size() <= 100
+        && data.tokens is int && data.tokens >= 0
+        && (!data.keys().contains('bio') || (data.bio is string && data.bio.size() <= 1000))
+        && (!data.keys().contains('avatarUrl') || (data.avatarUrl is string && data.avatarUrl.size() <= 1000))
+        && (!data.keys().contains('firstName') || (data.firstName is string && data.firstName.size() <= 100))
+        && (!data.keys().contains('lastName') || (data.lastName is string && data.lastName.size() <= 100))
+        && (!data.keys().contains('phone') || (data.phone is string && data.phone.size() <= 50))
+        && (!data.keys().contains('qualification') || (data.qualification is string && data.qualification.size() <= 100));
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'type', 'amount', 'description', 'date'])
+        && data.id is string && data.id.size() <= 128
+        && (data.type == 'earn' || data.type == 'spend')
+        && data.amount is int && data.amount > 0
+        && data.description is string && data.description.size() <= 300
+        && data.date is string && data.date.size() <= 50;
+    }
+
+    function isValidResource(data) {
+      return data.keys().hasAll(['id', 'title', 'type', 'subject', 'author', 'authorEmail'])
+        && data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 200
+        && (data.type == 'notes' || data.type == 'pdf' || data.type == 'class notes' || data.type == 'video class')
+        && (data.subject == 'coding' || data.subject == 'music' || data.subject == 'math' || data.subject == 'physics' || data.subject == 'languages' || data.subject == 'other')
+        && data.author is string && data.author.size() <= 100
+        && data.authorEmail is string && data.authorEmail.size() <= 100
+        && (!data.keys().contains('description') || (data.description is string && data.description.size() <= 1000))
+        && (!data.keys().contains('project') || (data.project is string && data.project.size() <= 200))
+        && (!data.keys().contains('fileSize') || (data.fileSize is string && data.fileSize.size() <= 50))
+        && (!data.keys().contains('downloads') || (data.downloads is int && data.downloads >= 0));
+    }
+  }
+}

@@ -1,10 +1,10 @@
 import { motion } from "motion/react";
-import { Sparkles, LayoutDashboard, Home, Search, Laptop, Coins, Crown, LogOut } from "lucide-react";
+import { Sparkles, LayoutDashboard, Home, Search, Laptop, Coins, Crown, LogOut, BookOpen, User } from "lucide-react";
 import { CurrentUser } from "./AuthPage";
 
 interface NavbarProps {
-  currentView: "landing" | "profile" | "match" | "learn" | "wallet" | "premium" | "auth";
-  onNavigate: (view: "landing" | "profile" | "match" | "learn" | "wallet" | "premium" | "auth") => void;
+  currentView: "landing" | "profile" | "match" | "learn" | "wallet" | "premium" | "auth" | "workspace";
+  onNavigate: (view: "landing" | "profile" | "match" | "learn" | "wallet" | "premium" | "auth" | "workspace") => void;
   currentUser: CurrentUser | null;
   onLogout: () => void;
 }
@@ -19,6 +19,7 @@ export function Navbar({ currentView, onNavigate, currentUser, onLogout }: Navba
           transition={{ duration: 0.5 }}
           onClick={() => onNavigate("landing")}
           className="flex items-center gap-2 text-xl font-bold font-heading text-slate-900 cursor-pointer hover:opacity-90 transition-opacity"
+          style={{ fontFamily: "Arial", fontSize: "35px", fontStyle: "normal" }}
         >
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
             <Sparkles className="w-5 h-5 text-white" />
@@ -74,6 +75,18 @@ export function Navbar({ currentView, onNavigate, currentUser, onLogout }: Navba
               </button>
 
               <button 
+                onClick={() => onNavigate("workspace")}
+                className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-full transition-all cursor-pointer ${
+                  currentView === "workspace" 
+                    ? "bg-slate-100 text-slate-900 border border-slate-200" 
+                    : "text-slate-600 hover:text-indigo-900"
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Workspace</span>
+              </button>
+
+              <button 
                 onClick={() => onNavigate("profile")}
                 className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-full transition-all cursor-pointer ${
                   currentView === "profile" 
@@ -81,8 +94,8 @@ export function Navbar({ currentView, onNavigate, currentUser, onLogout }: Navba
                     : "text-slate-600 hover:text-indigo-900"
                 }`}
               >
-                <LayoutDashboard className="w-3.5 h-3.5" />
-                <span>Workspace</span>
+                <User className="w-3.5 h-3.5" />
+                <span>Profile</span>
               </button>
 
               <button 

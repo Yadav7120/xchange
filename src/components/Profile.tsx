@@ -89,8 +89,8 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
     {
       id: "t-init",
       type: "earn",
-      amount: 10,
-      description: "Welcome credit for joining xchange",
+      amount: 30,
+      description: "Welcome grant for joining xchange",
       date: "May 22, 2026"
     }
   ]);
@@ -175,7 +175,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
 
   const simulateLearnSession = (peerName: string, skill: string) => {
     if (tokens < 10) {
-      alert("Insufficient Skill Tokens! Please run a teaching session to earn credits first.");
+      alert("Insufficient Skill Tokens! Please run a teaching session to earn Xtokens first.");
       return;
     }
     const newTx: Transaction = {
@@ -379,7 +379,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
           
           <div className="flex items-center gap-2 text-sm bg-indigo-50 border border-indigo-100 text-indigo-700 px-4 py-2 rounded-full font-medium">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-            Signed In: student-node-active
+            Profile Dashboard
           </div>
         </div>
 
@@ -436,63 +436,27 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
                 </div>
               </div>
 
-              {/* Profile pic changer */}
+              {/* Profile pic changer (No presets - Custom URL input only) */}
               {isEditingProfile && (
-                <div className="mb-6 p-3 bg-indigo-50/50 rounded-2xl border border-indigo-100/60 mt-2 animate-fade-in text-left">
+                <div className="mb-6 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/60 mt-2 animate-fade-in text-left">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-[10px] font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <label className="text-xs font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
                       <Camera className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Update Profile Photo</span>
+                      <span>Custom Profile Image URL</span>
                     </label>
                   </div>
 
-                  <div className="space-y-2">
-                    {/* Option toggler */}
-                    <div className="flex items-center gap-2">
-                      <button 
-                        type="button"
-                        onClick={() => setUseCustomProfileAvatar(false)}
-                        className={`text-[9px] font-bold px-2 py-1 rounded border transition-all cursor-pointer ${!useCustomProfileAvatar ? "bg-indigo-600 text-white border-indigo-600 shadow-xs" : "bg-white text-slate-600 border-slate-200"}`}
-                      >
-                        Presets
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => setUseCustomProfileAvatar(true)}
-                        className={`text-[9px] font-bold px-2 py-1 rounded border transition-all cursor-pointer ${useCustomProfileAvatar ? "bg-indigo-600 text-white border-indigo-600 shadow-xs" : "bg-white text-slate-600 border-slate-200"}`}
-                      >
-                        Paste URL
-                      </button>
-                    </div>
-
-                    {!useCustomProfileAvatar ? (
-                      <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-[280px] scrollbar-none">
-                        {avatarPresets.map((preset, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            title={preset.label}
-                            onClick={() => setAvatarUrl(preset.url)}
-                            className={`w-8 h-8 rounded-lg overflow-hidden shrink-0 transition-transform ${
-                              avatarUrl === preset.url && !useCustomProfileAvatar ? "ring-2 ring-indigo-600 scale-105" : "opacity-75 hover:opacity-100"
-                            }`}
-                          >
-                            <img src={preset.url} alt={preset.label} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <input 
-                        type="url"
-                        placeholder="Paste secure image address (https://...)"
-                        value={customUrlInput || avatarUrl}
-                        onChange={(e) => {
-                          setCustomUrlInput(e.target.value);
-                          setAvatarUrl(e.target.value);
-                        }}
-                        className="w-full bg-white text-[10px] py-1 px-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono text-slate-700"
-                      />
-                    )}
+                  <div className="space-y-1.5">
+                    <input 
+                      type="url"
+                      placeholder="Paste secure image address (https://...)"
+                      value={avatarUrl}
+                      onChange={(e) => {
+                        setAvatarUrl(e.target.value.trim());
+                      }}
+                      className="w-full bg-white text-xs py-2 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 font-mono text-slate-700"
+                    />
+                    <p className="text-[10px] text-slate-500">Provide any remote remote-image address to synchronize your customized profile avatar.</p>
                   </div>
                 </div>
               )}
@@ -570,35 +534,26 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
                 </div>
 
                 <div className="mb-6">
-                  <p className="text-slate-400 text-xs">Current Token Balance</p>
+                  <p className="text-slate-400 text-xs">Current Wallet Balance</p>
                   <div className="flex items-baseline gap-2 mt-1">
                     <span className="text-5xl font-black font-heading tracking-tight text-white bg-clip-text bg-gradient-to-r from-white to-slate-200">
                       {tokens}
                     </span>
-                    <span className="text-sm font-medium text-slate-300">Credits</span>
+                    <span className="text-sm font-semibold text-indigo-300">Xtoken</span>
                   </div>
                   <p className="text-xs text-indigo-300 mt-2 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                    Earn 10 credits per session you teach!
+                    Earn 10 Xtokens per teaching session!
                   </p>
                 </div>
 
-                {/* Simulated credit adjustment triggers */}
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <button 
-                    onClick={() => simulateTeachSession("Anonymous Peer", "Calculus")}
-                    className="flex flex-col items-center justify-center bg-slate-800/80 hover:bg-slate-800 text-left p-3 rounded-2xl border border-slate-700/50 hover:border-slate-600 transition-all text-xs group"
-                  >
-                    <span className="text-green-400 font-bold mb-0.5 group-hover:scale-110 transition-transform">+10 Tokens</span>
-                    <span className="text-slate-400 text-[10px]">Simulate Teaching</span>
-                  </button>
-                  <button 
-                    onClick={() => simulateLearnSession("Marcus Vance", "Classical Guitar")}
-                    className="flex flex-col items-center justify-center bg-slate-800/80 hover:bg-slate-800 text-left p-3 rounded-2xl border border-slate-700/50 hover:border-slate-600 transition-all text-xs group"
-                  >
-                    <span className="text-purple-400 font-bold mb-0.5 group-hover:scale-110 transition-transform">-10 Tokens</span>
-                    <span className="text-slate-400 text-[10px]">Simulate Booking</span>
-                  </button>
+                {/* Automated transactional wallet banner (no manual adjustments) */}
+                <div className="bg-slate-800/50 border border-slate-700/50 p-3.5 rounded-2xl mb-6 text-slate-300 text-xs flex items-start gap-2.5 leading-relaxed">
+                  <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-450 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-slate-200">Wallet Automated Mode</span>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Xtoken transaction calculations are triggered automatically on live session completed study states and peer bookings.</p>
+                  </div>
                 </div>
 
                 {/* Transaction history stack */}
@@ -766,19 +721,9 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => simulateTeachSession(activeWorkspacePeer.name, canTeach[0] || "Calculus")}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      Teach ({canTeach[0] || "Calculus"}) +10cr
-                    </button>
-                    <button 
-                      onClick={() => simulateLearnSession(activeWorkspacePeer.name, activeWorkspacePeer.canTeach[0] || "Guitar")}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      Learn ({activeWorkspacePeer.canTeach[0] || "Guitar"}) -10cr
-                    </button>
+                  <div className="flex items-center gap-2 text-xs bg-indigo-500/30 border border-indigo-400/20 text-white px-3 py-1.5 rounded-full font-bold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                    Secure Workspace Channel
                   </div>
                 </div>
 

@@ -25,6 +25,16 @@ import {
   Globe,
   Key
 } from "lucide-react";
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signInWithPopup, 
+  GoogleAuthProvider,
+  sendPasswordResetEmail,
+  sendEmailVerification
+} from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { auth, db, handleFirestoreError, OperationType } from "../firebase";
 import { mockPeers } from "../data/mockPeers";
 
 export interface CurrentUser {
@@ -76,17 +86,10 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [signupBio, setSignupBio] = useState("");
   
-  // Signup Avatar Preset Configurations
-  const avatarPresets = [
-    { url: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=150", label: "Scholar" },
-    { url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150", label: "Creative" },
-    { url: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=150", label: "Music & Math" },
-    { url: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=150", label: "Tech Peer" },
-    { url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150", label: "Consultant" }
-  ];
-  const [signupAvatarUrl, setSignupAvatarUrl] = useState(avatarPresets[0].url);
-  const [customAvatarUrl, setCustomAvatarUrl] = useState("");
-  const [useCustomAvatar, setUseCustomAvatar] = useState(false);
+  // Default signup generic picture placeholder
+  const defaultStudentPic = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150";
+  const [signupAvatarUrl, setSignupAvatarUrl] = useState(defaultStudentPic);
+  const [showAvatarInput, setShowAvatarInput] = useState(false);
 
   // Google OAuth Simulator Popup state
   const [showGoogleOAuth, setShowGoogleOAuth] = useState(false);
@@ -133,7 +136,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
   };
 
   // Submit methods
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccessMsg("");
@@ -143,56 +146,87 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
       return;
     }
 
-    // Check if we log in as one of the mock peers
-    const matchedPeer = mockPeers.find(p => p.email.toLowerCase() === loginEmail.toLowerCase());
-    
-    let loggedInUser: CurrentUser;
-
-    if (matchedPeer) {
-      // Split display name for consistency
-      const parts = matchedPeer.name.split(" ");
-      const firstName = parts[0] || "";
-      const lastName = parts.slice(1).join(" ") || "";
-
-      loggedInUser = {
-        name: matchedPeer.name,
-        email: matchedPeer.email,
-        major: matchedPeer.major,
-        bio: matchedPeer.bio,
-        canTeach: matchedPeer.canTeach,
-        wantToLearn: matchedPeer.wantToLearn,
-        tokens: matchedPeer.completedExchanges > 10 ? 40 : 10,
-        avatarUrl: matchedPeer.avatarUrl,
-        firstName,
-        lastName,
-        phone: "+1 (555) 492-3021",
-        qualification: "Undergraduate Student"
-      };
-    } else {
-      // Allow custom login for standard testing
-      const parts = loginEmail.split("@")[0].split(".");
+    setIsSendingCode(true); // show loader inside submit
+    try {
+      const parts = loginEmail.trim().split("@")[0].split(".");
       const firstName = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : "Student";
       const lastName = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : "";
-      
-      loggedInUser = {
-        name: `${firstName} ${lastName}`.trim(),
-        email: loginEmail,
-        major: "Student Swapper",
-        bio: "Joined the knowledge exchange! Keen to teach others my passion and pick up new techniques.",
-        canTeach: ["Calculus", "UI Design"],
-        wantToLearn: ["Classical Guitar", "Machine Learning"],
-        tokens: 10,
-        firstName,
-        lastName,
-        phone: "+1 (555) 123-4567",
-        qualification: "Undergraduate Student"
-      };
-    }
 
-    onLoginSuccess(loggedInUser);
+      // Real Firebase login
+      const cred = await signInWithEmailAndPassword(auth, loginEmail.trim(), loginPassword);
+      
+      if (!cred.user.emailVerified) {
+        await auth.signOut();
+        setError("Please verify your email address to log in.");
+        setIsSendingCode(false);
+        return;
+      }
+      
+      const userDocRef = doc(db, "users", cred.user.uid);
+      let userDocSnap;
+      try {
+        userDocSnap = await getDoc(userDocRef);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.GET, `users/${cred.user.uid}`);
+      }
+
+      let loggedInUser: CurrentUser;
+      if (userDocSnap && userDocSnap.exists()) {
+        const uData = userDocSnap.data();
+        loggedInUser = {
+          name: uData.name,
+          email: uData.email,
+          major: uData.major,
+          bio: uData.bio || "",
+          canTeach: uData.canTeach || [],
+          wantToLearn: uData.wantToLearn || [],
+          tokens: typeof uData.tokens === "number" ? uData.tokens : 30,
+          avatarUrl: uData.avatarUrl || defaultStudentPic,
+          firstName: uData.firstName || firstName,
+          lastName: uData.lastName || lastName,
+          phone: uData.phone || "",
+          qualification: uData.qualification || "Undergraduate Student"
+        };
+      } else {
+        loggedInUser = {
+          name: cred.user.displayName || `${firstName} ${lastName}`.trim(),
+          email: cred.user.email || loginEmail.trim(),
+          major: "Interdisciplinary Candidate",
+          bio: "Joined the knowledge exchange! Keen to teach others my passion and pick up new techniques.",
+          canTeach: ["Calculus", "TypeScript"],
+          wantToLearn: ["Classical Guitar", "Spanish"],
+          tokens: 30,
+          avatarUrl: cred.user.photoURL || defaultStudentPic,
+          firstName,
+          lastName,
+          phone: "",
+          qualification: "Undergraduate Student"
+        };
+        try {
+          await setDoc(userDocRef, loggedInUser);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, `users/${cred.user.uid}`);
+        }
+      }
+
+      onLoginSuccess(loggedInUser);
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+        setError("Invalid email or password credentials. Please verify your details.");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Please supply a valid email address.");
+      } else if (err.code === "auth/wrong-password") {
+        setError("Incorrect password. Please try again.");
+      } else {
+        setError(err.message || "Authentication failed. Please verify credentials.");
+      }
+    } finally {
+      setIsSendingCode(false);
+    }
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccessMsg("");
@@ -227,57 +261,114 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
       return;
     }
 
-    // Build the tentative user object
-    const fullName = `${signupFirstName.trim()} ${signupLastName.trim()}`;
-    const tentativeUser: CurrentUser = {
-      name: fullName,
-      email: signupEmail.trim(),
-      major: signupQualification, // Set major as current academic qualification/major
-      bio: signupBio || "New xchange student eager to connect and swap skills!",
-      canTeach: signupCanTeach.length > 0 ? signupCanTeach : ["English Help"],
-      wantToLearn: signupWantToLearn.length > 0 ? signupWantToLearn : ["Basic Calculus"],
-      tokens: 10, // Earn 10 credits welcome gift
-      avatarUrl: useCustomAvatar && customAvatarUrl.trim() ? customAvatarUrl.trim() : signupAvatarUrl,
-      firstName: signupFirstName.trim(),
-      lastName: signupLastName.trim(),
-      phone: signupPhone.trim(),
-      qualification: signupQualification
-    };
+    setIsSendingCode(true);
+    try {
+      // Build the tentative user object
+      const fullName = `${signupFirstName.trim()} ${signupLastName.trim()}`;
+      const tentativeUser: CurrentUser = {
+        name: fullName,
+        email: signupEmail.trim(),
+        major: signupQualification,
+        bio: signupBio || "New xchange student eager to connect and swap skills!",
+        canTeach: signupCanTeach.length > 0 ? signupCanTeach : ["Calculus", "TypeScript"],
+        wantToLearn: signupWantToLearn.length > 0 ? signupWantToLearn : ["Classical Guitar", "Spanish"],
+        tokens: 30,
+        avatarUrl: signupAvatarUrl,
+        firstName: signupFirstName.trim(),
+        lastName: signupLastName.trim(),
+        phone: signupPhone.trim(),
+        qualification: signupQualification
+      };
 
-    // Save temporary user and generate simulated SMTP code
-    setTempUser(tentativeUser);
-    sendSimulatedVerificationCode(signupEmail.trim());
+      // Create authentication in Firebase
+      const cred = await createUserWithEmailAndPassword(auth, signupEmail.trim(), signupPassword);
+      
+      setTempUser(tentativeUser);
+      setIsSendingCode(true);
+      await sendEmailVerification(cred.user);
+      setIsVerifyingEmail(true);
+      setSuccessMsg(`Verification link sent to ${signupEmail.trim()}! Please check your inbox.`);
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === "auth/email-already-in-use") {
+        setError("This school email address is already registered on xchange.");
+      } else if (err.code === "auth/invalid-email") {
+        setError("Please supply a valid email address.");
+      } else {
+        setError(err.message || "Failed to initialize standard sign-up.");
+      }
+    } finally {
+      setIsSendingCode(false);
+    }
   };
 
-  const sendSimulatedVerificationCode = (email: string) => {
+  const sendRealVerificationEmail = async () => {
     setIsSendingCode(true);
     setError("");
-    
-    // Simulate SMTP delivery network delay
-    setTimeout(() => {
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setVerificationCode(code);
-      setIsVerifyingEmail(true);
+    try {
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        setSuccessMsg(`Verification link re-sent to ${auth.currentUser.email}! Please check your inbox.`);
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to resend verification email.");
+    } finally {
       setIsSendingCode(false);
-      setSuccessMsg(`Simulated safety verification dispatch sent successfully to ${email}!`);
-    }, 1200);
+    }
   };
 
-  const handleVerifyCodeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCheckEmailVerified = async () => {
     setError("");
-
-    if (userInputCode !== verificationCode) {
-      setError("Invalid confirmation PIN. Note the dev box code above and try again.");
-      return;
-    }
-
-    if (tempUser) {
-      onLoginSuccess(tempUser);
+    setIsSendingCode(true);
+    try {
+      await auth.currentUser?.reload();
+      if (auth.currentUser?.emailVerified) {
+        setSuccessMsg("Email successfully verified!");
+        if (tempUser && auth.currentUser) {
+          const uid = auth.currentUser.uid;
+          // Save the profile info permanently to Firestore!
+          const userDocRef = doc(db, "users", uid);
+          try {
+            await setDoc(userDocRef, {
+              name: tempUser.name,
+              email: tempUser.email,
+              major: tempUser.major,
+              bio: tempUser.bio,
+              canTeach: tempUser.canTeach,
+              wantToLearn: tempUser.wantToLearn,
+              tokens: tempUser.tokens,
+              avatarUrl: tempUser.avatarUrl,
+              firstName: tempUser.firstName,
+              lastName: tempUser.lastName,
+              phone: tempUser.phone,
+              qualification: tempUser.qualification
+            });
+            
+            // Set up welcome transaction in Firestore subcollection
+            const txDocRef = doc(db, "users", uid, "transactions", "tx-init");
+            await setDoc(txDocRef, {
+              id: "tx-init",
+              type: "earn",
+              amount: 30,
+              description: "Welcome grant for joining xchange",
+              date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+            });
+          } catch (err) {
+            handleFirestoreError(err, OperationType.CREATE, `users/${uid}`);
+          }
+          onLoginSuccess(tempUser);
+        }
+      } else {
+        setError("Email is not verified yet. Please check your inbox or click the link again.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Checking verification status failed.");
+    } finally {
+      setIsSendingCode(false);
     }
   };
 
-  const handleForgotPasswordSubmit = (e: React.FormEvent) => {
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccessMsg("");
@@ -288,16 +379,19 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
     }
 
     setIsSendingResetEmail(true);
-
-    setTimeout(() => {
-      const secureToken = "xch_tkn_" + Math.floor(100000 + Math.random() * 900000);
-      const resetLink = `${window.location.origin}/?reset_token=${secureToken}&email=${encodeURIComponent(forgotEmail.trim())}`;
-      setGeneratedResetLink(resetLink);
-      setResetEmail(forgotEmail.trim());
-      setResetToken(secureToken);
+    try {
+      await sendPasswordResetEmail(auth, forgotEmail.trim());
+      setSuccessMsg(`A standard password reset email has been dispatched to ${forgotEmail}. Please check your inbox.`);
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === "auth/user-not-found") {
+        setError("This email address is not registered under any student profile.");
+      } else {
+        setError(err.message || "Failed to dispatch password reset email.");
+      }
+    } finally {
       setIsSendingResetEmail(false);
-      setSuccessMsg(`Secure password update dispatch generated successfully for ${forgotEmail}!`);
-    }, 1000);
+    }
   };
 
   const handleResetPasswordSubmit = (e: React.FormEvent) => {
@@ -321,17 +415,99 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
     setSuccessMsg("Shield secured! Your password has been updated securely. Try logging in below.");
     setMode("login");
     setLoginEmail(resetEmail);
-    // Clear out reset fields
     setResetPassword("");
     setResetConfirmPassword("");
   };
 
-  const triggerGoogleOAuth = () => {
-    setShowGoogleOAuth(true);
-    setIsGoogleLoading(false);
+  const triggerGoogleOAuth = async () => {
+    setError("");
+    setIsGoogleLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      
+      // Load user profile from Firestore or write fallback
+      const userDocRef = doc(db, "users", user.uid);
+      let userDocSnap;
+      try {
+        userDocSnap = await getDoc(userDocRef);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
+      }
+
+      let loggedInUser: CurrentUser;
+      if (userDocSnap && userDocSnap.exists()) {
+        const uData = userDocSnap.data();
+        loggedInUser = {
+          name: uData.name,
+          email: uData.email,
+          major: uData.major,
+          bio: uData.bio || "",
+          canTeach: uData.canTeach || [],
+          wantToLearn: uData.wantToLearn || [],
+          tokens: typeof uData.tokens === "number" ? uData.tokens : 30,
+          avatarUrl: uData.avatarUrl || user.photoURL || defaultStudentPic,
+          firstName: uData.firstName || user.displayName?.split(" ")[0] || "Student",
+          lastName: uData.lastName || user.displayName?.split(" ").slice(1).join(" ") || "",
+          phone: uData.phone || "",
+          qualification: uData.qualification || "Undergraduate Student"
+        };
+      } else {
+        const parts = (user.displayName || "Google Scholar").split(" ");
+        const firstName = parts[0] || "Google";
+        const lastName = parts.slice(1).join(" ") || "Scholar";
+        
+        loggedInUser = {
+          name: user.displayName || "Google Scholar",
+          email: user.email || "google.scholar@university.edu",
+          major: "Interdisciplinary Exchange Candidate",
+          bio: "Connected instantly using school Google credentials! Eager to match skills with my university peers on xchange.",
+          canTeach: ["Calculus", "Basic Programming"],
+          wantToLearn: ["Spanish", "Introduction to Psychology"],
+          tokens: 30,
+          avatarUrl: user.photoURL || defaultStudentPic,
+          firstName,
+          lastName,
+          phone: "",
+          qualification: "Undergraduate Student"
+        };
+        
+        try {
+          await setDoc(userDocRef, loggedInUser);
+          
+          const txDocRef = doc(db, "users", user.uid, "transactions", "tx-init");
+          await setDoc(txDocRef, {
+            id: "tx-init",
+            type: "earn",
+            amount: 30,
+            description: "Welcome grant for joining xchange",
+            date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}`);
+        }
+      }
+
+      setIsGoogleLoading(false);
+      onLoginSuccess(loggedInUser);
+    } catch (err: any) {
+      setIsGoogleLoading(false);
+      console.error(err);
+      if (err.code === "auth/popup-closed-by-user") {
+        setError("Sign-in popup closed before completion. Please try again.");
+      } else if (err.code === "auth/unauthorized-domain") {
+        setError("This domain is unauthorized for Google sign-in. Check Firebase settings.");
+      } else {
+        setError(err.message || "Google Authentication failed.");
+      }
+    }
   };
 
   const handleGoogleAccountSelect = (email: string, fullName: string, avatar: string) => {
+    // Left for backward compatibility/quick selection with simulate login
     setIsGoogleLoading(true);
     setError("");
     
@@ -347,7 +523,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
         bio: "Connected instantly using school Google credentials! Eager to match skills with my university peers on xchange.",
         canTeach: ["Calculus", "Basic Programming"],
         wantToLearn: ["Spanish", "Introduction to Psychology"],
-        tokens: 15, // Google Quick login welcome incentive
+        tokens: 30,
         avatarUrl: avatar,
         firstName,
         lastName,
@@ -460,32 +636,14 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
                     <Mail className="w-8 h-8 text-amber-600 animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black font-heading text-slate-900">Email Authenticating</h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                      We sent a 6-digit confirmation security code to your student network:
+                    <h3 className="text-2xl font-black font-heading text-slate-900">Verify Your Email</h3>
+                    <p className="text-sm text-slate-500 mt-2">
+                      Please check your inbox for a verification link sent to:
                     </p>
-                    <span className="inline-block bg-slate-100 px-3 py-1 text-slate-700 font-mono text-xs rounded-lg mt-2 font-bold select-all">
+                    <span className="inline-block bg-slate-100 px-3 py-1 text-slate-700 font-mono text-sm rounded-lg mt-2 font-bold select-all">
                       {tempUser?.email}
                     </span>
                   </div>
-                </div>
-
-                {/* Simulated SMTP Web Outbox Visual Banner */}
-                <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-amber-900 uppercase tracking-wider text-[10px]">
-                    <span className="w-2 h-2 bg-emerald-500 rounded-full inline-block animate-ping"></span>
-                    <span>Local SMTP Dev Log Outbox Simulator</span>
-                  </div>
-                  <p className="text-[11px] text-amber-950 font-mono">
-                    Subject: [xchange-Auth] Security code. Pin is: <strong className="text-indigo-600 underline text-sm tracking-widest">{verificationCode}</strong>
-                  </p>
-                  <button 
-                    type="button" 
-                    onClick={() => setUserInputCode(verificationCode)}
-                    className="text-[10px] font-bold text-indigo-700 hover:text-indigo-900 bg-white shadow-xs px-2.5 py-1 rounded border border-indigo-200 mt-1 cursor-pointer transition-colors"
-                  >
-                    ⚡ Auto-fill verification code
-                  </button>
                 </div>
 
                 {error && (
@@ -493,48 +651,43 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
                     {error}
                   </div>
                 )}
-
-                <form onSubmit={handleVerifyCodeSubmit} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block text-center">
-                      Enter 6-Digit Code
-                    </label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. 583901"
-                      value={userInputCode}
-                      onChange={(e) => setUserInputCode(e.target.value)}
-                      maxLength={6}
-                      className="w-full text-center text-xl tracking-widest font-black bg-slate-50 text-slate-900 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                    />
+                
+                {successMsg && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-150 text-emerald-800 rounded-xl text-xs font-semibold text-center">
+                    {successMsg}
                   </div>
+                )}
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <button 
-                      type="button"
-                      onClick={() => sendSimulatedVerificationCode(tempUser?.email || "")}
-                      className="flex items-center justify-center gap-1.5 py-3 text-xs font-bold text-slate-650 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Resend PIN
-                    </button>
-                    
-                    <button 
-                      type="submit"
-                      className="py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer text-center"
-                    >
-                      Verify & Activate!
-                    </button>
-                  </div>
-                </form>
+                <div className="flex flex-col gap-3 py-4">
+                  <button 
+                    onClick={handleCheckEmailVerified}
+                    disabled={isSendingCode}
+                    className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer flex items-center justify-center disabled:opacity-50"
+                  >
+                    {isSendingCode ? "Checking..." : "I've clicked the link"}
+                  </button>
+
+                  <button 
+                    type="button"
+                    onClick={sendRealVerificationEmail}
+                    disabled={isSendingCode}
+                    className="w-full flex items-center justify-center gap-1.5 py-3 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Resend Verification Email
+                  </button>
+                </div>
 
                 <p className="text-center">
                   <button 
                     type="button"
-                    onClick={() => setIsVerifyingEmail(false)}
+                    onClick={() => {
+                        setIsVerifyingEmail(false);
+                        auth.signOut();
+                    }}
                     className="text-xs text-slate-400 hover:text-slate-600 underline"
                   >
-                    Go back and correct details
+                    Sign in with a different account
                   </button>
                 </p>
 
@@ -906,71 +1059,61 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
                           </div>
                         </div>
 
-                        {/* PROFILE PICTURE SELECTOR (HI-FI OPTIONAL ADDITION) */}
-                        <div className="space-y-2.5 p-3 rounded-2xl bg-indigo-50/50 border border-indigo-100/65">
+                        {/* PROFILE PICTURE SELECTOR (NO PRESETS - CUSTOM URL INPUT ONLY) */}
+                        <div className="space-y-3.5 p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/65">
                           <div className="flex items-center justify-between">
-                            <label className="text-xs font-bold text-indigo-900 flex items-center gap-1.5 uppercase tracking-wider">
+                            <label className="text-xs font-bold text-indigo-950 flex items-center gap-1.5 uppercase tracking-wider">
                               <Camera className="w-4 h-4 text-indigo-600" />
-                              <span>Select Profile Photo (Optional)</span>
+                              <span>Custom Profile Picture</span>
                             </label>
-                            <span className="text-[9px] text-indigo-700 bg-white px-2 py-0.5 rounded-full font-bold border border-indigo-200">Optional</span>
+                            <span className="text-[9px] text-indigo-700 bg-white px-2.5 py-0.5 rounded-full font-bold border border-indigo-150">Not Mandatory</span>
                           </div>
 
-                          <div className="flex items-center gap-4">
-                            {/* Selected preview sphere */}
+                          <div className="flex items-start gap-4">
+                            {/* Avatar Preview */}
                             <img 
-                              src={useCustomAvatar && customAvatarUrl.trim() ? customAvatarUrl : signupAvatarUrl}
-                              alt="Avatar Preview"
+                              src={signupAvatarUrl}
+                              alt="Custom Profile Avatar"
                               referrerPolicy="no-referrer"
-                              className="w-12 h-12 rounded-xl object-cover ring-2 ring-indigo-600 ring-offset-2 shrink-0 bg-indigo-50"
+                              className="w-12 h-12 rounded-xl object-cover ring-2 ring-indigo-600 ring-offset-2 shrink-0 bg-slate-100"
                               onError={(e) => {
-                                e.currentTarget.src = avatarPresets[0].url;
+                                e.currentTarget.src = defaultStudentPic;
                               }}
                             />
 
                             <div className="space-y-2 flex-1">
-                              {/* Option toggler */}
-                              <div className="flex items-center gap-2">
-                                <button 
+                              {!showAvatarInput ? (
+                                <button
                                   type="button"
-                                  onClick={() => setUseCustomAvatar(false)}
-                                  className={`text-[9px] font-bold px-2 py-1 rounded border-sm transition-all cursor-pointer ${!useCustomAvatar ? "bg-indigo-600 text-white border-indigo-600 shadow-xs" : "bg-white text-slate-600 border-slate-250 hover:bg-slate-50"}`}
+                                  onClick={() => setShowAvatarInput(true)}
+                                  className="text-[11px] font-bold text-indigo-700 bg-white hover:bg-slate-50 border border-indigo-200 rounded-xl px-3.5 py-1.5 shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
                                 >
-                                  Presets
+                                  <Camera className="w-3.5 h-3.5" />
+                                  Add Custom Profile Pic
                                 </button>
-                                <button 
-                                  type="button"
-                                  onClick={() => setUseCustomAvatar(true)}
-                                  className={`text-[9px] font-bold px-2 py-1 rounded border-sm transition-all cursor-pointer ${useCustomAvatar ? "bg-indigo-600 text-white border-indigo-600 shadow-xs" : "bg-white text-slate-600 border-slate-250 hover:bg-slate-50"}`}
-                                >
-                                  Paste Image URL
-                                </button>
-                              </div>
-
-                              {!useCustomAvatar ? (
-                                <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-[210px] sm:max-w-xs scrollbar-none">
-                                  {avatarPresets.map((preset, idx) => (
-                                    <button
-                                      key={idx}
-                                      type="button"
-                                      title={preset.label}
-                                      onClick={() => setSignupAvatarUrl(preset.url)}
-                                      className={`w-8 h-8 rounded-lg overflow-hidden shrink-0 transition-transform ${
-                                        signupAvatarUrl === preset.url && !useCustomAvatar ? "ring-2 ring-indigo-600 scale-105" : "opacity-75 hover:opacity-100"
-                                      }`}
-                                    >
-                                      <img src={preset.url} alt={preset.label} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                                    </button>
-                                  ))}
-                                </div>
                               ) : (
-                                <input 
-                                  type="url"
-                                  placeholder="Paste any secure image address (https://...)"
-                                  value={customAvatarUrl}
-                                  onChange={(e) => setCustomAvatarUrl(e.target.value)}
-                                  className="w-full bg-white text-[11px] py-1 px-2.5 rounded-lg border border-slate-200 focus:outline-none text-slate-705 font-mono"
-                                />
+                                <div className="space-y-1.5 w-full">
+                                  <input 
+                                    type="url"
+                                    placeholder="Paste secure image URL (https://...)"
+                                    value={signupAvatarUrl === defaultStudentPic ? "" : signupAvatarUrl}
+                                    onChange={(e) => setSignupAvatarUrl(e.target.value.trim() || defaultStudentPic)}
+                                    className="w-full bg-white text-xs py-2 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-700 font-mono"
+                                  />
+                                  <div className="flex justify-between items-center">
+                                    <p className="text-[10px] text-slate-500">Must be an active remote HTTPS photo link.</p>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        setSignupAvatarUrl(defaultStudentPic);
+                                        setShowAvatarInput(false);
+                                      }}
+                                      className="text-[9px] font-bold text-red-500 hover:underline"
+                                    >
+                                      Reset
+                                    </button>
+                                  </div>
+                                </div>
                               )}
                             </div>
                           </div>

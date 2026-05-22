@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "The user profile document which represents registered students in xchange.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The combined full name (First Last)" },
+        "email": { "type": "string", "format": "email", "description": "Verified university student email" },
+        "major": { "type": "string", "description": "Undergrad major, candidate department, or curriculum track" },
+        "bio": { "type": "string", "description": "Student bibliography, motivations and exchange notes" },
+        "canTeach": { "type": "array", "description": "Skills the student is qualified and eager to tutor" },
+        "wantToLearn": { "type": "array", "description": "Skills the student wants to pick up from other peers" },
+        "tokens": { "type": "integer", "description": "Skill economy ledger balance inside the Xtoken wallet" },
+        "avatarUrl": { "type": "string", "description": "Personal profile avatar illustration or custom remote secure URL" },
+        "firstName": { "type": "string", "description": "Given first name" },
+        "lastName": { "type": "string", "description": "Family surname" },
+        "phone": { "type": "string", "description": "Contact cellular digits" },
+        "qualification": { "type": "string", "description": "Education level e.g. Undergraduate, Masters, etc." }
+      },
+      "required": ["name", "email", "major", "tokens"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Represents an automated financial or educational event inside the Xtoken wallet.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique transaction tracking hash" },
+        "type": { "type": "string", "enum": ["earn", "spend"], "description": "Earn credits for teaching vs Spend credits for booking" },
+        "amount": { "type": "integer", "description": "Size of credits involved (e.g., 10 or 30)" },
+        "description": { "type": "string", "description": "Particular explanation of the reciprocal swap session or welcome grant" },
+        "date": { "type": "string", "description": "Localized calendar record of the exchange" }
+      },
+      "required": ["id", "type", "amount", "description", "date"]
+    },
+    "Resource": {
+      "title": "Resource",
+      "description": "Shared educational files, books, video classes, or drafts posted inside the digital workspace.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Relational object UID" },
+        "title": { "type": "string", "description": "Topic headline of notes" },
+        "type": { "type": "string", "enum": ["notes", "pdf", "class notes", "video class"], "description": "Format of learning resource" },
+        "subject": { "type": "string", "enum": ["coding", "music", "math", "physics", "languages", "other"], "description": "Category of notes content" },
+        "project": { "type": "string", "description": "Relational project/swap description origin" },
+        "description": { "type": "string", "description": "Brief notes syllabus breakdown" },
+        "author": { "type": "string", "description": "Author full profile name" },
+        "authorEmail": { "type": "string", "format": "email", "description": "Author email identifier" },
+        "date": { "type": "string", "description": "Listing date" },
+        "fileSize": { "type": "string", "description": "Sizing tag" },
+        "downloads": { "type": "integer", "description": "Interactivity metric counters" }
+      },
+      "required": ["id", "title", "type", "subject", "author", "authorEmail"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Top-level collection for all user profiles"
+    },
+    "/users/{userId}/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "User specific wallet transactions audit trail"
+    },
+    "/resources/{resourceId}": {
+      "schema": "Resource",
+      "description": "Shared PDF assets and files accessible inside workspace pages"
+    }
+  }
+}

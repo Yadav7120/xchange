@@ -24,13 +24,16 @@ import {
 } from "lucide-react";
 import { PeerUser } from "../types";
 import { mockPeers } from "../data/mockPeers";
+import { CurrentUser } from "./AuthPage";
 
 interface MatchFinderProps {
   onBackToLanding: () => void;
   onNavigateToProfile: () => void;
+  currentUser: CurrentUser | null;
+  onUpdateUser: (user: CurrentUser) => void;
 }
 
-export function MatchFinder({ onBackToLanding, onNavigateToProfile }: MatchFinderProps) {
+export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser, onUpdateUser }: MatchFinderProps) {
   // Config state
   const [teachSkill, setTeachSkill] = useState("Calculus");
   const [learnSkill, setLearnSkill] = useState("Spanish");
@@ -43,6 +46,43 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile }: MatchFinde
   // Premium upgrade modal
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
+
+  const handleAcceptMatch = () => {
+    if (!currentUser) {
+      alert("Please register or log in first before initiating skill matches!");
+      setStatus("idle");
+      return;
+    }
+
+    if (currentUser.tokens < 10) {
+      alert(`Booking Aborted! You do not have enough Xtokens in your wallet to book a new skill swap (Cost: 10 Xtokens).\nYour Wallet: ${currentUser.tokens} Xtokens.\nPlease facilitate user instruction sessions on the workspace to earn tokens first!`);
+      return;
+    }
+
+    // Deduct 10 tokens automatically
+    const updatedUser = {
+      ...currentUser,
+      tokens: currentUser.tokens - 10
+    };
+
+    // Log transaction to history
+    const savedTxs = localStorage.getItem(`xchange_tx_history_${currentUser.email}`);
+    let txs = [];
+    if (savedTxs) {
+      try { txs = JSON.parse(savedTxs); } catch (e) {}
+    }
+    txs.unshift({
+      id: `tx-booked-${Date.now()}`,
+      type: "spend",
+      amount: 10,
+      description: `Booked reciprocal class swap for ${learnSkill} with ${matchedPeer?.name || "Community Partner"}`,
+      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    });
+    localStorage.setItem(`xchange_tx_history_${currentUser.email}`, JSON.stringify(txs));
+
+    onUpdateUser(updatedUser);
+    setStatus("accepted");
+  };
 
   // Active radar scan faces
   const [activeScanFaceIndex, setActiveScanFaceIndex] = useState(0);
@@ -318,7 +358,7 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile }: MatchFinde
                       Reject Match
                     </button>
                     <button 
-                      onClick={() => setStatus("accepted")}
+                      onClick={handleAcceptMatch}
                       className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl py-3 cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <UserCheck className="w-4 h-4" />
