@@ -46,12 +46,7 @@ export function Hero({ onGetStarted }: HeroProps) {
               Start Learning Now
               <ArrowRight className="w-4 h-4" />
             </button>
-            <button 
-              onClick={onGetStarted}
-              className="flex items-center gap-2 bg-white text-slate-700 text-base font-medium px-8 py-4 rounded-full border border-slate-200 hover:border-slate-300 hover:bg-slate-50 cursor-pointer transition-all shadow-sm"
-            >
-              Explore Skills
-            </button>
+
           </div>
         </motion.div>
 

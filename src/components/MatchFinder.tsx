@@ -16,6 +16,7 @@ import {
   RefreshCw,
   TrendingDown,
   Check,
+  CheckCircle,
   ShieldAlert,
   HelpCircle,
   TrendingUp,
@@ -38,14 +39,11 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
   const [teachSkill, setTeachSkill] = useState("Calculus");
   const [learnSkill, setLearnSkill] = useState("Spanish");
   
+
   // App matching states
   const [status, setStatus] = useState<"idle" | "searching" | "matched" | "no_match" | "accepted">("idle");
   const [matchedPeer, setMatchedPeer] = useState<PeerUser | null>(null);
   const [searchDuration, setSearchDuration] = useState(3000); // ms
-  
-  // Premium upgrade modal
-  const [showPremiumModal, setShowPremiumModal] = useState(false);
-  const [isPremium, setIsPremium] = useState(false);
 
   const handleAcceptMatch = () => {
     if (!currentUser) {
@@ -85,12 +83,50 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
   };
 
   // Active radar scan faces
+  const [scanAvatars, setScanAvatars] = useState<string[]>([]);
+  const [allUsers, setAllUsers] = useState<PeerUser[]>([]);
+
+  useEffect(() => {
+    // Load initial users for radar
+    const fetchUsers = async () => {
+      try {
+        const { collection, getDocs } = await import("firebase/firestore");
+        const { db } = await import("../firebase");
+        const querySnapshot = await getDocs(collection(db, "users"));
+        const users: PeerUser[] = [];
+        const avatars: string[] = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (!currentUser || data.email !== currentUser.email) {
+            users.push({
+              id: doc.id,
+              name: data.name || "Unknown",
+              avatarUrl: data.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150",
+              email: data.email,
+              major: data.major || "Undecided",
+              canTeach: data.canTeach || [],
+              wantToLearn: data.wantToLearn || [],
+              rating: 5.0,
+              completedExchanges: 0,
+              bio: data.bio || ""
+            });
+            avatars.push(data.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150");
+          }
+        });
+        setAllUsers(users);
+        setScanAvatars(avatars.length > 0 ? avatars : ["https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150"]);
+      } catch (err) {
+        setScanAvatars(["https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150"]);
+      }
+    };
+    fetchUsers();
+  }, [currentUser]);
+
   const [activeScanFaceIndex, setActiveScanFaceIndex] = useState(0);
-  const scanAvatars = mockPeers.map(p => p.avatarUrl);
 
   useEffect(() => {
     let interval: number | null = null;
-    if (status === "searching") {
+    if (status === "searching" && scanAvatars.length > 0) {
       interval = window.setInterval(() => {
         setActiveScanFaceIndex(prev => (prev + 1) % scanAvatars.length);
       }, 350);
@@ -98,7 +134,7 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [status, scanAvatars.length]);
+  }, [status, scanAvatars]);
 
   // Handle Match Search trigger
   const handleSearch = (simulateNoMatch: boolean = false) => {
@@ -109,25 +145,153 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
       if (simulateNoMatch || teachSkill.trim().toLowerCase() === "unknown obscure skill") {
         setStatus("no_match");
       } else {
-        // Find best match in mock database
+        // Find best match in real database
         // Look for peer that can teach learnSkill or wants teachSkill
-        const lookForMatch = mockPeers.find(peer => {
+        const lookForMatch = allUsers.find(peer => {
           const teachesMatch = peer.canTeach.some(s => s.toLowerCase().includes(learnSkill.toLowerCase()) || learnSkill.toLowerCase().includes(s.toLowerCase()));
           const wantsMatch = peer.wantToLearn.some(s => s.toLowerCase().includes(teachSkill.toLowerCase()) || teachSkill.toLowerCase().includes(s.toLowerCase()));
           return teachesMatch || wantsMatch;
         });
 
         // fallback to first peer if no direct found but we wanted to simulate a match
-        const finalMatch = lookForMatch || mockPeers[0];
-        setMatchedPeer(finalMatch);
-        setStatus("matched");
+        const finalMatch = lookForMatch || (allUsers.length > 0 ? allUsers[0] : null);
+        
+        if (finalMatch) {
+          setMatchedPeer(finalMatch);
+          setStatus("matched");
+        } else {
+          setStatus("no_match");
+        }
       }
     }, searchDuration);
+  };
+
+  const [paymentStep, setPaymentStep] = useState<"idle" | "price" | "verification" | "sending" | "complete">("idle");
+
+  const handleMentorPurchase = async () => {
+    setPaymentStep("sending");
+    try {
+      const response = await fetch('/api/notify-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: currentUser?.email || 'unknown',
+          paymentType: 'MentorAccess',
+          confirmation: 'Request Pending'
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details?.description || 'Telegram notification failed');
+      }
+
+      setPaymentStep("complete");
+    } catch (error: any) {
+      console.error('Failed to notify:', error);
+      alert(`Error initiating purchase: ${error.message}`);
+      setPaymentStep("price");
+    }
   };
 
   return (
     <div className="pt-24 min-h-screen bg-slate-50">
       <div className="max-w-4xl mx-auto px-6 py-8">
+        
+        {/* Mentor Payment Modal */}
+        <AnimatePresence>
+          {paymentStep !== "idle" && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setPaymentStep("idle")}
+                className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-200"
+              >
+                {paymentStep === "price" && (
+                  <div className="space-y-6">
+                    <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 mb-2">
+                       <Crown className="w-6 h-6" />
+                    </div>
+                    <div className="text-left">
+                      <h2 className="text-xl font-black text-slate-900 font-heading">Certified Mentor Access</h2>
+                      <p className="text-sm text-slate-500 mt-1">Unlock expert guidance from verified faculty.</p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl border-2 border-indigo-600 bg-indigo-50/50 flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-indigo-900 text-sm">Monthly Mentor Pass</p>
+                        <p className="text-[10px] text-indigo-600 font-medium">Verified expert routing</p>
+                      </div>
+                      <span className="font-black text-slate-900">$14.99</span>
+                    </div>
+
+                    <button 
+                      onClick={() => setPaymentStep("verification")}
+                      className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                    >
+                      Process Payment
+                    </button>
+                  </div>
+                )}
+
+                {paymentStep === "verification" && (
+                  <div className="space-y-6 text-center">
+                    <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 mx-auto animate-pulse">
+                       <HelpCircle className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-black text-slate-900 font-heading">Verify Purchase</h2>
+                      <p className="text-sm text-slate-500 leading-relaxed">
+                        Are you sure you want to hire a certified Mentor? An admin will reach out to schedule your first session.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => setPaymentStep("price")} className="py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-wider">Back</button>
+                      <button onClick={handleMentorPurchase} className="py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider">Confirm</button>
+                    </div>
+                  </div>
+                )}
+
+                {paymentStep === "sending" && (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-4">
+                    <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                    <p className="font-bold text-slate-900 text-sm">Processing...</p>
+                  </div>
+                )}
+
+                {paymentStep === "complete" && (
+                  <div className="space-y-6 text-center">
+                    <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 mx-auto">
+                       <CheckCircle className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-black text-slate-900 font-heading">Mentor Requested!</h2>
+                      <p className="text-sm text-slate-500">
+                         Admin notified. expect a response within 24 hours.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => setPaymentStep("idle")} 
+                      className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all"
+                    >
+                      Close
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
         
         {/* Breadcrumb row */}
         <div className="mb-8 flex items-center justify-between">
@@ -391,30 +555,22 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
                     </p>
                   </div>
 
+
                   <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-3xl p-6 text-left shadow-inner space-y-4">
                     <div className="flex items-center gap-2 text-amber-800">
                       <Crown className="w-5 h-5 text-amber-600 fill-amber-500 shrink-0" />
-                      <span className="font-heading font-bold text-sm">Need a Certified Instructor?</span>
+                      <span className="font-heading font-bold text-sm">Need a Certified Mentor?</span>
                     </div>
 
                     <p className="text-xs text-amber-900/80 leading-relaxed">
-                      Unlock certified university graduates and professional peer mentors. Upgrade to **xchange Premium** to connect with an on-demand verified Mentor immediately!
+                      Cannot find a peer? Unlock verified university graduates and professional peer mentors.
                     </p>
 
-                    <ul className="text-xs text-amber-950 space-y-1.5 font-medium">
-                      <li className="flex items-center gap-1.5">
-                        <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Access 500+ verified campus Mentors
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" /> 1-on-1 tutoring with graduate teaching assistants
-                      </li>
-                    </ul>
-
                     <button 
-                      onClick={() => setShowPremiumModal(true)}
-                      className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-xs py-3 rounded-xl shadow-md shadow-amber-200 cursor-pointer text-center block transition-all"
+                      onClick={() => setPaymentStep("price")}
+                      className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-xs py-3 rounded-xl shadow-md cursor-pointer text-center"
                     >
-                      Upgrade to Premium for Mentor Access
+                      Hire a Certified Mentor
                     </button>
                   </div>
 
@@ -505,119 +661,6 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
 
         </div>
 
-        {/* Premium Upgrade Modal */}
-        <AnimatePresence>
-          {showPremiumModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setShowPremiumModal(false)}
-                className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
-              />
-              
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="relative bg-white rounded-3xl p-8 max-w-md w-full border border-amber-200 shadow-2xl overflow-hidden"
-              >
-                {/* Visual Crown header */}
-                <div className="absolute top-0 right-0 p-8 opacity-5">
-                  <Crown className="w-44 h-44 text-amber-500" />
-                </div>
-
-                <div className="relative space-y-6">
-                  
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-700 text-white px-3 py-1 rounded-full text-xs font-bold font-heading">
-                      <Crown className="w-3.5 h-3.5" />
-                      PREMIUM SYSTEM
-                    </div>
-                    <button 
-                      onClick={() => setShowPremiumModal(false)}
-                      className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h3 className="text-2xl font-black text-slate-900 font-heading">
-                      Unlock Verified Mentors
-                    </h3>
-                    <p className="text-slate-600 text-sm leading-relaxed">
-                      Cannot find a peer student? With Premium custom routing, you get verified faculty members, teaching assistants, or certified alumni tutors.
-                    </p>
-                  </div>
-
-                  {/* Premium Plans comparison items */}
-                  <div className="space-y-3 pt-2">
-                    <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/50 flex justify-between items-center text-xs">
-                      <div>
-                        <p className="font-bold text-amber-900">Campus Pass Plus</p>
-                        <p className="text-amber-700 font-medium font-sans">Unlimited mentor match routing</p>
-                      </div>
-                      <span className="font-bold font-heading text-slate-900">$9.99/mo</span>
-                    </div>
-
-                    <div className="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50 flex justify-between items-center text-xs opacity-75">
-                      <div>
-                        <p className="font-bold text-slate-800">Honor Roll Member</p>
-                        <p className="text-slate-600 font-sans">Includes 100 extra tokens free</p>
-                      </div>
-                      <span className="font-bold font-heading text-slate-900">$19.99/mo</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-4 rounded-xl space-y-3.5 text-xs text-slate-600 font-medium">
-                    <p className="font-bold text-slate-800">Elite Account Benefits Include:</p>
-                    <ul className="space-y-2 text-[11px]">
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-600" />
-                        Guaranteed matching fallback within 1 hour
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-600" />
-                        Access live video rooms without any token spend
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-emerald-600" />
-                        Premium badge on your workspace profile card
-                      </li>
-                    </ul>
-                  </div>
-
-                  <button 
-                    onClick={() => {
-                      setIsPremium(true);
-                      setShowPremiumModal(false);
-                      // Simulate match success with a generic peer who can play the mentor role
-                      setMatchedPeer({
-                        id: "peer-premium-mentor",
-                        name: "Dr. Evelyn Cartwright (Premium Mentor)",
-                        avatarUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=120",
-                        email: "evelyn.cartwright@university.edu",
-                        major: "Faculty Research Lead - CS & Applied Linguistics",
-                        canTeach: [learnSkill, "Computational Systems"],
-                        wantToLearn: ["Any curious student questions"],
-                        rating: 5.0,
-                        completedExchanges: 182,
-                        bio: "Verified Academic Mentor. I support active learning swaps across xchange. Let's study together to unlock your skills without boundaries."
-                      });
-                      setStatus("matched");
-                    }}
-                    className="w-full bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 text-white text-sm font-bold py-3.5 rounded-xl cursor-pointer text-center"
-                  >
-                    Simulate Premium Upgrade ($9.99)
-                  </button>
-
-                </div>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
 
       </div>
     </div>

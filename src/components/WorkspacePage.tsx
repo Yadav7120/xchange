@@ -14,25 +14,14 @@ import {
   BookMarked,
   ArrowRight,
   ExternalLink,
-  Laptop
+  Laptop,
+  X
 } from "lucide-react";
 import { collection, onSnapshot, doc, setDoc, updateDoc } from "firebase/firestore";
-import { db } from "../firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../firebase";
 import { CurrentUser } from "./AuthPage";
-
-interface Resource {
-  id: string;
-  title: string;
-  type: "notes" | "pdf" | "class notes" | "video class";
-  subject: "coding" | "music" | "math" | "physics" | "languages" | "other";
-  project: string;
-  description: string;
-  author: string;
-  authorEmail: string;
-  date: string;
-  fileSize: string;
-  downloads: number;
-}
+import { Resource } from "../types";
 
 interface WorkspacePageProps {
   onBackToLanding: () => void;
@@ -40,106 +29,37 @@ interface WorkspacePageProps {
   onUpdateUser: (user: CurrentUser) => void;
 }
 
-const INITIAL_RESOURCES: Resource[] = [
-  {
-    id: "res-1",
-    title: "Calculus I: Limits & Continuity Cheat Sheet",
-    type: "pdf",
-    subject: "math",
-    project: "Limit Solver Project",
-    description: "Detailed formulas and breakdown of epsilon-delta proofs, standard limit laws, and the squeeze theorem with worked examples.",
-    author: "Marcus Vance",
-    authorEmail: "marcus.v@university.edu",
-    date: "May 18, 2026",
-    fileSize: "1.4 MB",
-    downloads: 38
-  },
-  {
-    id: "res-2",
-    title: "Advanced TypeScript Patterns & Generic Hooks",
-    type: "notes",
-    subject: "coding",
-    project: "State Machine Hook Project",
-    description: "Handcrafted markdown guide outlining generics, conditional types, and real-world custom React hook structures for state machines.",
-    author: "Sophia Cheng",
-    authorEmail: "sophia.c@university.edu",
-    date: "May 20, 2026",
-    fileSize: "480 KB",
-    downloads: 54
-  },
-  {
-    id: "res-3",
-    title: "Spanish Subjunctive Mood Conjugation Matrix",
-    type: "class notes",
-    subject: "languages",
-    project: "Spanish Verb Drills",
-    description: "Classroom reference sheets comparing indicative vs subjunctive clauses across common irregular verbs (ser, estar, tener, etc.)",
-    author: "Elena Rostova",
-    authorEmail: "elena.r@university.edu",
-    date: "May 21, 2026",
-    fileSize: "840 KB",
-    downloads: 19
-  },
-  {
-    id: "res-4",
-    title: "Video Class: Classical Guitar Basics & Arpeggios",
-    type: "video class",
-    subject: "music",
-    project: "Fingerstyle Masterclass",
-    description: "A 15-minute high-definition video lesson explaining the fundamental thumb-index-middle-ring fingerpicking patterns on open nylon strings.",
-    author: "David Miller",
-    authorEmail: "david.m@university.edu",
-    date: "May 15, 2026",
-    fileSize: "24.5 MB",
-    downloads: 41
-  },
-  {
-    id: "res-5",
-    title: "Newtonian Mechanics & Air Resistance Equations",
-    type: "pdf",
-    subject: "physics",
-    project: "Ballistics Simulator",
-    description: "Comprehensive class notes containing differential equations describing air resistance, terminal velocity, and drag coefficients.",
-    author: "Aisha Rahman",
-    authorEmail: "aisha.r@university.edu",
-    date: "May 12, 2026",
-    fileSize: "2.1 MB",
-    downloads: 27
-  }
-];
+const INITIAL_RESOURCES: Resource[] = [];
 
 export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: WorkspacePageProps) {
   // Load resources from Firestore in real-time!
   const [resources, setResources] = useState<Resource[]>(INITIAL_RESOURCES);
 
   useEffect(() => {
+    // One time cleanup of mock data
+    const mockIds = ["res-1", "res-2", "res-3", "res-4", "res-5"];
+    import("firebase/firestore").then(({ deleteDoc, doc }) => {
+      mockIds.forEach(id => {
+        deleteDoc(doc(db, "resources", id)).catch(() => {});
+      });
+    });
+
     const qCol = collection(db, "resources");
     const unsubscribe = onSnapshot(qCol, (snap) => {
       const dbResources: Resource[] = [];
       snap.forEach((doc) => {
         dbResources.push(doc.data() as Resource);
       });
-      if (dbResources.length > 0) {
-        // Sort newest documents first
-        dbResources.sort((a, b) => b.id.localeCompare(a.id));
-        setResources(dbResources);
-      } else {
-        // Empty Firestore project: seed standard academic notes
-        INITIAL_RESOURCES.forEach(async (initRes) => {
-          try {
-            await setDoc(doc(db, "resources", initRes.id), initRes);
-          } catch (e) {
-            console.error("Error seeding initial resource: ", e);
-          }
-        });
-        setResources(INITIAL_RESOURCES);
-      }
+      
+      // Sort newest documents first
+      dbResources.sort((a, b) => b.id.localeCompare(a.id));
+      setResources(dbResources);
     }, (error) => {
       console.error("Firestore resources snapshot error, using memory fallback: ", error);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [db]);
 
   // Filters state
   const [selectedType, setSelectedType] = useState<string>("all");
@@ -148,12 +68,18 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
 
   // Post resource state
   const [showAddModal, setShowAddModal] = useState(false);
+  const [previewResource, setPreviewResource] = useState<Resource | null>(null);
+  const [editingResource, setEditingResource] = useState<Resource | null>(null);
+  const [resourceToDelete, setResourceToDelete] = useState<string | null>(null);
+  const [confirmStage, setConfirmStage] = useState<number>(0);
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState<Resource["type"]>("notes");
   const [newSubject, setNewSubject] = useState<Resource["subject"]>("coding");
   const [newProject, setNewProject] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [newFileSize, setNewFileSize] = useState("1.2 MB");
+  const [newFileSize, setNewFileSize] = useState("0 KB");
+  const [newFileUrl, setNewFileUrl] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const [formError, setFormError] = useState("");
 
   // Categories lists
@@ -201,10 +127,27 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
       console.error("Error committing downloaded stats to firestore: ", e);
     }
     
-    alert(`Success! Simulated high-speed connection established. Downloaded "${item.title}" successfully into cache.`);
+    if (item.fileUrl) {
+      window.open(item.fileUrl, '_blank');
+    } else {
+      alert(`Success! Simulated high-speed connection established. Downloaded "${item.title}" successfully into cache.`);
+    }
   };
 
   // Submit new resource
+  const executeDeleteResource = async () => {
+    if (!resourceToDelete) return;
+    try {
+      const { doc, deleteDoc } = await import("firebase/firestore");
+      await deleteDoc(doc(db, "resources", resourceToDelete));
+      setResourceToDelete(null);
+      setConfirmStage(0);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to delete.");
+    }
+  };
+
   const handlePostResourceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
@@ -222,37 +165,54 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
       return;
     }
 
-    const createdResource: Resource = {
-      id: `res-${Date.now()}`,
-      title: newTitle.trim(),
-      type: newType,
-      subject: newSubject,
-      project: newProject.trim(),
-      description: newDescription.trim(),
-      author: currentUser?.name || "Student Swapper",
-      authorEmail: currentUser?.email || "student@university.edu",
-      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      fileSize: newFileSize.trim(),
-      downloads: 0
-    };
+    if (editingResource) {
+      try {
+        await updateDoc(doc(db, "resources", editingResource.id), {
+          title: newTitle.trim(),
+          type: newType,
+          subject: newSubject,
+          project: newProject.trim(),
+          description: newDescription.trim(),
+          fileUrl: newFileUrl || editingResource.fileUrl,
+          fileSize: newFileSize !== "0 KB" ? newFileSize.trim() : editingResource.fileSize
+        });
+      } catch (e) {
+        console.error(e);
+        setFormError("Failed to update resource.");
+        return;
+      }
+    } else {
+      const createdResource: Resource = {
+        id: `res-${Date.now()}`,
+        title: newTitle.trim(),
+        type: newType,
+        subject: newSubject,
+        project: newProject.trim(),
+        description: newDescription.trim(),
+        author: currentUser?.name || "Student Swapper",
+        authorEmail: currentUser?.email || "student@university.edu",
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        fileSize: newFileSize.trim(),
+        downloads: 0,
+        fileUrl: newFileUrl
+      };
 
-    // Commit instantly as a permanent record to Firestore
-    try {
-      await setDoc(doc(db, "resources", createdResource.id), createdResource);
-    } catch (e) {
-      console.error("Error saving new shared file to Firestore: ", e);
+      try {
+        await setDoc(doc(db, "resources", createdResource.id), createdResource);
+        alert("Resource shared successfully! You contributed to the communal knowledge base!");
+      } catch (e) {
+        console.error("Error saving new shared file to Firestore: ", e);
+      }
     }
 
-    setResources([createdResource, ...resources]);
-    
     // Reset form & state
     setNewTitle("");
     setNewProject("");
     setNewDescription("");
-    setNewFileSize("1.5 MB");
+    setNewFileSize("0 KB");
+    setNewFileUrl("");
+    setEditingResource(null);
     setShowAddModal(false);
-
-    alert("Resource shared successfully! You contributed to the communal knowledge base!");
   };
 
   return (
@@ -269,37 +229,37 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
             Back to Public Homepage
           </button>
 
-          <span className="text-xs bg-slate-200 text-slate-700 px-3 py-1.5 rounded-full font-mono font-bold">
-            ⚡ Peer Resource Vault ({resources.length} files)
-          </span>
+
         </div>
 
-        {/* Header Block with Premium Aesthetics */}
-        <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 rounded-3xl p-8 text-white shadow-xl mb-12 relative overflow-hidden">
-          <div className="absolute right-0 bottom-0 opacity-10 translate-y-1/4 translate-x-1/4">
-            <BookMarked className="w-80 h-80" />
-          </div>
-
-          <div className="relative max-w-2xl text-left space-y-4">
-            <span className="bg-indigo-505 bg-indigo-500/20 text-indigo-300 font-bold text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-indigo-400/20 inline-block">
-              Knowledge Commons
-            </span>
-            <h1 className="text-3xl md:text-4xl font-black font-heading leading-tight tracking-tight">
+        {/* Header Block with Cleaner Aesthetics */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-8 mb-12 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="relative max-w-2xl text-left space-y-2">
+            <h1 className="text-3xl md:text-4xl font-black font-heading text-slate-900 tracking-tight">
               Shared Study Workspace
             </h1>
-            <p className="text-sm text-indigo-200 leading-relaxed">
+            <p className="text-sm text-slate-500 leading-relaxed font-medium">
               Explore user-uploaded notes, PDF textbooks, class recordings, and reference materials. Share your own resource attachments below to earn appreciation from peer learners!
             </p>
-            
-            <div className="pt-2">
-              <button 
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-5 py-3 rounded-xl shadow-lg shadow-indigo-900/40 transition-colors cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                Upload New Note/File
-              </button>
-            </div>
+          </div>
+          <div className="shrink-0 flex items-center justify-end">
+            <button 
+              onClick={() => {
+                setEditingResource(null);
+                setNewTitle("");
+                setNewType("notes");
+                setNewSubject("coding");
+                setNewProject("");
+                setNewDescription("");
+                setNewFileUrl("");
+                setNewFileSize("0 KB");
+                setShowAddModal(true);
+              }}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-5 py-3 rounded-xl transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Upload Resource
+            </button>
           </div>
         </div>
 
@@ -418,12 +378,12 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
                 </div>
 
                 {/* Footer Contributors Panel */}
-                <div className="border-t border-slate-50 pt-3.5 flex items-center justify-between mt-auto">
+                <div className="border-t border-slate-50 pt-3 flex items-center justify-between mt-auto">
                   
                   {/* Author details */}
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200">
-                      <User className="w-3.5 h-3.5 text-slate-500" />
+                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200">
+                      <User className="w-3 h-3 text-slate-500" />
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] font-bold text-slate-700 truncate leading-none">{res.author}</p>
@@ -431,17 +391,57 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
                     </div>
                   </div>
 
-                  {/* Direct simulated download button */}
-                  <button
-                    onClick={() => handleDownloadSimulation(res)}
-                    className="flex items-center gap-1 text-[10px] bg-slate-50 hover:bg-indigo-600 hover:text-white text-slate-600 font-bold px-2.5 py-1.5 rounded-lg border border-slate-100 hover:border-indigo-600 transition-all cursor-pointer"
-                    title={`View and Download. Downloads Count: ${res.downloads}`}
-                  >
-                    {res.type === "video class" ? <Video className="w-3 h-3" /> : <Download className="w-3 h-3" />}
-                    <span>{res.type === "video class" ? "Video" : "Get File"}</span>
-                    <span className="opacity-60">({res.downloads})</span>
-                  </button>
-
+                  {/* Actions */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {res.fileUrl && (
+                      <button
+                        onClick={() => setPreviewResource(res)}
+                        className="flex items-center gap-1 text-[10px] bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 font-bold px-2.5 py-1.5 rounded-lg border border-slate-100 transition-colors cursor-pointer"
+                        title="Preview File"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Preview</span>
+                      </button>
+                    )}
+                    
+                    {currentUser?.email === res.authorEmail && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditingResource(res);
+                            setNewTitle(res.title);
+                            setNewType(res.type as any);
+                            setNewSubject(res.subject as any);
+                            setNewProject(res.project);
+                            setNewDescription(res.description);
+                            setShowAddModal(true);
+                          }}
+                          className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 rounded-lg transition-colors"
+                          title="Edit"
+                        >
+                          <BookOpen className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setResourceToDelete(res.id);
+                            setConfirmStage(1);
+                          }}
+                          className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-red-500 rounded-lg transition-colors"
+                          title="Delete"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => handleDownloadSimulation(res)}
+                      className="flex items-center gap-1 text-[10px] bg-slate-900 hover:bg-slate-800 text-white font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                      title={`Download. Count: ${res.downloads}`}
+                    >
+                      {res.type === "video class" ? <Video className="w-3 h-3" /> : <Download className="w-3 h-3" />}
+                      <span>{res.type === "video class" ? "Video" : "Get"}</span>
+                    </button>
+                  </div>
                 </div>
 
               </motion.div>
@@ -561,14 +561,43 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Estimated File Size</label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Resource File</label>
                       <input 
-                        type="text" 
-                        placeholder="e.g. 1.2 MB or 22.0 MB"
-                        value={newFileSize}
-                        onChange={(e) => setNewFileSize(e.target.value)}
-                        className="w-full text-xs font-mono font-semibold text-slate-800 bg-slate-50 border border-slate-200 px-3.5 py-3 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-none transition-all"
+                        type="file" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              setIsUploading(true);
+                              const sizeStr = file.size > 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${(file.size / 1024).toFixed(0)} KB`;
+                              setNewFileSize(sizeStr);
+                              
+                              // Fallback Object URL
+                              try {
+                                setNewFileUrl(URL.createObjectURL(file));
+                              } catch(e) {/* ignore */}
+
+                              const fileRef = ref(storage, `resources/${file.name}_${Date.now()}`);
+                              const snap = await uploadBytes(fileRef, file);
+                              const dl = await getDownloadURL(snap.ref);
+                              setNewFileUrl(dl);
+                            } catch (err) {
+                              console.error("Resource upload failed:", err);
+                              // Base64 fallback if storage fails
+                              const reader = new FileReader();
+                              reader.onload = (re) => {
+                                if (re.target?.result) setNewFileUrl(re.target.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            } finally {
+                              setIsUploading(false);
+                            }
+                          }
+                        }}
+                        className="w-full text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white focus:outline-none transition-all"
+                        disabled={isUploading}
                       />
+                      {isUploading && <p className="text-[10px] text-indigo-600 font-bold">Uploading file...</p>}
                     </div>
                   </div>
 
@@ -599,6 +628,123 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
                     </button>
                   </div>
                 </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* PREVIEW DIALOG COMPONENT */}
+        <AnimatePresence>
+          {previewResource && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+            >
+              <motion.div 
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col h-[85vh]"
+              >
+                <div className="bg-slate-50 border-b border-slate-100 p-4 px-6 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
+                      {previewResource.type === "video class" ? <Video className="w-5 h-5 text-indigo-600" /> : <BookOpen className="w-5 h-5 text-indigo-600" />}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-lg leading-tight">{previewResource.title}</h3>
+                      <p className="text-xs text-slate-500 font-medium">Uploaded by {previewResource.author}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setPreviewResource(null)}
+                    className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="flex-1 bg-slate-100/50 p-4 overflow-hidden flex flex-col">
+                  {previewResource.fileUrl ? (
+                    <iframe 
+                      src={previewResource.fileUrl} 
+                      className="w-full h-full rounded-xl bg-white border border-slate-200 shadow-sm"
+                      title={previewResource.title}
+                      allow="autoplay"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                      <Folder className="w-16 h-16 mb-4 opacity-50" />
+                      <p>No preview available.</p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* DELETE CONFIRM Modal */}
+        <AnimatePresence>
+          {confirmStage > 0 && resourceToDelete && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center space-y-5 border border-slate-100"
+              >
+                <div className="mx-auto w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4">
+                  <X className="w-6 h-6" />
+                </div>
+                
+                {confirmStage === 1 ? (
+                  <>
+                    <h3 className="text-lg font-bold text-slate-800 font-heading">Delete Resource?</h3>
+                    <p className="text-sm text-slate-500">Are you sure you want to remove this uploaded resource?</p>
+                    <div className="flex items-center gap-3 justify-center pt-2">
+                      <button 
+                        onClick={() => { setConfirmStage(0); setResourceToDelete(null); }}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        onClick={() => setConfirmStage(2)}
+                        className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-xl transition-colors"
+                      >
+                        Yes, Delete It
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-bold text-red-600 font-heading">Final Verification</h3>
+                    <p className="text-sm text-slate-600 font-semibold underline decoration-red-200 decoration-2">Are you absolutely sure?</p>
+                    <p className="text-xs text-slate-500">This cannot be undone.</p>
+                    <div className="flex items-center gap-3 justify-center pt-2">
+                      <button 
+                        onClick={() => { setConfirmStage(0); setResourceToDelete(null); }}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                      >
+                        No, Keep It
+                      </button>
+                      <button 
+                        onClick={executeDeleteResource}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-md shadow-red-500/20 transition-all border border-red-500"
+                      >
+                        Confirm Deletion
+                      </button>
+                    </div>
+                  </>
+                )}
               </motion.div>
             </motion.div>
           )}

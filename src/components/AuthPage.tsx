@@ -537,41 +537,13 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
     }, 1400);
   };
 
-  // Preset accounts login helper
-  const handleQuickDemoLogin = (peerEmail: string) => {
-    setError("");
-    setSuccessMsg("");
-    const matchedPeer = mockPeers.find(p => p.email === peerEmail);
-    if (matchedPeer) {
-      const parts = matchedPeer.name.split(" ");
-      const firstName = parts[0] || "";
-      const lastName = parts.slice(1).join(" ") || "";
-
-      const demoUser: CurrentUser = {
-        name: matchedPeer.name,
-        email: matchedPeer.email,
-        major: matchedPeer.major,
-        bio: matchedPeer.bio,
-        canTeach: matchedPeer.canTeach,
-        wantToLearn: matchedPeer.wantToLearn,
-        tokens: 30, // Plenty of credits for testing
-        avatarUrl: matchedPeer.avatarUrl,
-        firstName,
-        lastName,
-        phone: "+1 (555) 234-9000",
-        qualification: "Undergraduate Student"
-      };
-      onLoginSuccess(demoUser);
-    }
-  };
-
   return (
     <div className="pt-24 min-h-screen bg-slate-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 selection:bg-indigo-100 selection:text-indigo-950">
       
       <div className="w-full max-w-5xl grid md:grid-cols-12 gap-8 items-stretch md:bg-white md:rounded-3xl md:shadow-xl md:border md:border-slate-150 overflow-hidden">
         
         {/* Left Informational Sidebar/Column */}
-        <div className="md:col-span-5 bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 text-white p-8 sm:p-12 flex flex-col justify-between rounded-3xl md:rounded-none">
+        <div className="md:col-span-5 bg-indigo-900 text-white p-8 sm:p-12 flex flex-col justify-between rounded-3xl md:rounded-none">
           <div className="space-y-6">
             <div 
               onClick={onBackToLanding}
@@ -833,49 +805,6 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
                           <ArrowRight className="w-4 h-4" />
                         </button>
                       </form>
-
-                      {/* Simulated testing aid */}
-                      <div className="pt-6 border-t border-slate-100">
-                        <p className="text-xs font-bold text-slate-700 mb-3 uppercase tracking-wider">
-                          ⚡ Quick Testing Accounts (One-Click Log In):
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <button 
-                            type="button"
-                            onClick={() => handleQuickDemoLogin("marcus.vance@university.edu")}
-                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-900 p-2.5 rounded-xl text-left border border-indigo-100 text-xs transition-all flex items-center gap-2 cursor-pointer"
-                          >
-                            <img 
-                              src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120"
-                              alt="Marcus" 
-                              referrerPolicy="no-referrer"
-                              className="w-6 h-6 rounded-full object-cover shrink-0"
-                            />
-                            <div className="truncate">
-                              <p className="font-bold text-[11px]">Marcus Vance</p>
-                              <p className="text-[9px] text-indigo-600 font-medium">Calculus & Guitar swap</p>
-                            </div>
-                          </button>
-
-                          <button 
-                            type="button"
-                            onClick={() => handleQuickDemoLogin("elena.r@university.edu")}
-                            className="bg-purple-50 hover:bg-purple-100 text-purple-900 p-2.5 rounded-xl text-left border border-purple-100 text-xs transition-all flex items-center gap-2 cursor-pointer"
-                          >
-                            <img 
-                              src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120"
-                              alt="Elena" 
-                              referrerPolicy="no-referrer"
-                              className="w-6 h-6 rounded-full object-cover shrink-0"
-                            />
-                            <div className="truncate">
-                              <p className="font-bold text-[11px]">Elena Rostova</p>
-                              <p className="text-[9px] text-purple-600 font-medium">Machine Learning Tutor</p>
-                            </div>
-                          </button>
-                        </div>
-                      </div>
-
                     </motion.div>
                   ) : mode === "signup" ? (
                     

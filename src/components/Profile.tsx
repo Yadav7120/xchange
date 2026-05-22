@@ -28,7 +28,7 @@ import {
   Mail,
   Camera
 } from "lucide-react";
-import { Transaction, PeerUser, ChatMessage, NoteFile } from "../types";
+import { Transaction, PeerUser, ChatMessage, NoteFile, Resource } from "../types";
 import { mockPeers } from "../data/mockPeers";
 import { CurrentUser } from "./AuthPage";
 
@@ -39,12 +39,16 @@ interface ProfileProps {
   onLogout: () => void;
 }
 
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage, db } from "../firebase";
+
 export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }: ProfileProps) {
   // User profile state
   const [name, setName] = useState(currentUser.name);
   const [major, setMajor] = useState(currentUser.major);
   const [bio, setBio] = useState(currentUser.bio);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150");
   const [useCustomProfileAvatar, setUseCustomProfileAvatar] = useState(false);
@@ -100,27 +104,40 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
   const [activeWorkspacePeer, setActiveWorkspacePeer] = useState<PeerUser | null>(null);
 
   // Chat conversation state
-  const [conversations, setConversations] = useState<Record<string, ChatMessage[]>>({
-    "peer-1": [
-      { id: "m-1", sender: "peer", text: "Hey! I saw you can teach Calculus and UI Design. Music theory is also my jam! Care to swap dynamic scheduling for guitar lessons?", timestamp: "4 hours ago" }
-    ],
-    "peer-2": [
-      { id: "m-2", sender: "peer", text: "Hi Alex! Your TypeScript feedback looks super solid. I can definitely teach you advanced deep learning frameworks in swap!", timestamp: "Just now" }
-    ]
-  });
+  const [conversations, setConversations] = useState<Record<string, ChatMessage[]>>({});
   const [currentMessageText, setCurrentMessageText] = useState("");
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Notes file upload mock database
-  const [sharedNotes, setSharedNotes] = useState<Record<string, NoteFile[]>>({
-    "peer-1": [
-      { id: "n-1", name: "Calculus-CheatSheet.pdf", size: "1.4 MB", uploadedAt: "Yesterday" },
-      { id: "n-2", name: "Guitar_Fingerpicking_Tabs.pdf", size: "840 KB", uploadedAt: "Today" }
-    ],
-    "peer-2": [
-      { id: "n-3", name: "PyTorch_Introduction.pdf", size: "2.8 MB", uploadedAt: "3 days ago" }
-    ]
-  });
+  const [sharedNotes, setSharedNotes] = useState<Record<string, NoteFile[]>>({});
+
+  // My uploaded resources
+  const [myResources, setMyResources] = useState<Resource[]>([]);
+
+  useEffect(() => {
+    let unsubscribe = () => {};
+    const fetchMyResources = async () => {
+      try {
+        const { collection, query, where, onSnapshot } = await import("firebase/firestore");
+        const q = query(
+          collection(db, "resources"),
+          where("authorEmail", "==", currentUser.email)
+        );
+        unsubscribe = onSnapshot(q, (snapshot) => {
+          const resourcesData: Resource[] = [];
+          snapshot.forEach((doc) => {
+            resourcesData.push(doc.data() as Resource);
+          });
+          resourcesData.sort((a, b) => b.id.localeCompare(a.id));
+          setMyResources(resourcesData);
+        });
+      } catch (err) {
+        console.error("Error fetching my resources", err);
+      }
+    };
+    fetchMyResources();
+    return () => unsubscribe();
+  }, [currentUser.email]);
 
   // Drag and drop / local upload simulator states
   const [dragActive, setDragActive] = useState(false);
@@ -132,6 +149,41 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [callTimer, setCallTimer] = useState(0);
   const callIntervalRef = useRef<number | null>(null);
+
+  const [editingResourceId, setEditingResourceId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [editingDesc, setEditingDesc] = useState("");
+  
+  const [resourceToDelete, setResourceToDelete] = useState<string | null>(null);
+  const [confirmStage, setConfirmStage] = useState<number>(0);
+  const [showProfileSaveConfirm, setShowProfileSaveConfirm] = useState(false);
+
+  const executeDeleteResource = async () => {
+    if (!resourceToDelete) return;
+    try {
+      const { doc, deleteDoc } = await import("firebase/firestore");
+      await deleteDoc(doc(db, "resources", resourceToDelete));
+      setResourceToDelete(null);
+      setConfirmStage(0);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to delete resource.");
+    }
+  };
+
+  const handleEditResourceSave = async (id: string) => {
+    try {
+      const { doc, updateDoc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "resources", id), {
+        title: editingTitle,
+        description: editingDesc
+      });
+      setEditingResourceId(null);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update resource.");
+    }
+  };
 
   // Form Submitters
   const handleAddTeachSkill = (e: React.FormEvent) => {
@@ -190,13 +242,36 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
   };
 
   // Run Real-time Matching Engine whenever any skill arrays change
-  // Scoring weights:
-  // - Direct mutual match: both can trade what they need = 100% Match
-  // - Partial canTeach matches their need, OR their canTeach matches your need = 50% Match
-  // - Otherwise, any overlapping skills or lower match score
   useEffect(() => {
-    const calculateMatches = () => {
-      const sortedMatches = mockPeers.map(peer => {
+    const calculateMatches = async () => {
+      // First try to load peers from firestore users, if none found, we use an empty array.
+      let allUsers: PeerUser[] = [];
+      try {
+        const { collection, getDocs } = await import("firebase/firestore");
+        const querySnapshot = await getDocs(collection(db, "users"));
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          // Exclude current user from matches
+          if (data.email !== currentUser.email) {
+            allUsers.push({
+              id: doc.id,
+              name: data.name || "Unknown",
+              avatarUrl: data.avatarUrl || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150",
+              email: data.email,
+              major: data.major || "Undecided",
+              canTeach: data.canTeach || [],
+              wantToLearn: data.wantToLearn || [],
+              rating: 5.0,
+              completedExchanges: 0,
+              bio: data.bio || ""
+            });
+          }
+        });
+      } catch (err) {
+        console.error("Error fetching users for matching", err);
+      }
+
+      const sortedMatches = allUsers.map(peer => {
         let directMatchCount = 0;
         let partialMatchCount = 0;
 
@@ -237,7 +312,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
     };
 
     calculateMatches();
-  }, [canTeach, wantToLearn]);
+  }, [canTeach, wantToLearn, currentUser.email]);
 
   // Instant messaging interactive state engine
   const sendMessage = (e: React.FormEvent) => {
@@ -329,37 +404,68 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      addNewSimulatedFile(file.name, `${(file.size / 1024 / 1024).toFixed(1)} MB`);
+      await handleRealFileUpload(file);
     }
   };
 
-  const handleManualUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleManualUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      addNewSimulatedFile(file.name, `${(file.size / 1024 / 1024).toFixed(1)} MB`);
+      await handleRealFileUpload(file);
     }
   };
 
-  const addNewSimulatedFile = (name: string, size: string) => {
+  const handleRealFileUpload = async (file: File) => {
     if (!activeWorkspacePeer) return;
+    const peerId = activeWorkspacePeer.id;
+    const sizeStr = file.size > 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${(file.size / 1024).toFixed(0)} KB`;
+    
+    // Add pending state
     const newFile: NoteFile = {
       id: `note-${Date.now()}`,
-      name: name,
-      size: size,
-      uploadedAt: "Just now"
+      name: file.name,
+      size: sizeStr,
+      uploadedAt: "Uploading..."
     };
-    const peerId = activeWorkspacePeer.id;
+    
     setSharedNotes(prev => ({
       ...prev,
       [peerId]: [...(prev[peerId] || []), newFile]
     }));
+
+    try {
+      // Create Object URL as fallback preview
+      let downloadURL = "";
+      try {
+        downloadURL = URL.createObjectURL(file);
+      } catch(e) {}
+      
+      try {
+        const fileRef = ref(storage, `chat_notes/${peerId}_${Date.now()}_${file.name}`);
+        const snap = await uploadBytes(fileRef, file);
+        downloadURL = await getDownloadURL(snap.ref);
+      } catch (storageErr) {
+        console.error("Storage upload error for chat notes", storageErr);
+      }
+
+      setSharedNotes(prev => ({
+        ...prev,
+        [peerId]: prev[peerId].map(f => f.id === newFile.id ? { ...f, uploadedAt: "Just now", fileUrl: downloadURL } : f)
+      }));
+    } catch (err) {
+      console.error(err);
+      setSharedNotes(prev => ({
+        ...prev,
+        [peerId]: prev[peerId].map(f => f.id === newFile.id ? { ...f, uploadedAt: "Failed" } : f)
+      }));
+    }
   };
 
   return (
@@ -391,7 +497,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
             
             {/* User Profile Info Card */}
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-blue-500"></div>
+              <div className="absolute top-0 left-0 right-0 h-2 bg-indigo-500"></div>
               
               <div className="flex items-center gap-4 mb-6 mt-2">
                 {avatarUrl ? (
@@ -442,21 +548,50 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-xs font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
                       <Camera className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Custom Profile Image URL</span>
+                      <span>Custom Profile Image</span>
                     </label>
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <input 
-                      type="url"
-                      placeholder="Paste secure image address (https://...)"
-                      value={avatarUrl}
-                      onChange={(e) => {
-                        setAvatarUrl(e.target.value.trim());
+                      type="file"
+                      accept="image/*"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          try {
+                            setIsUploading(true);
+                            // As a fallback for permissions, generate object URL immediately for preview
+                            try {
+                              const objectUrl = URL.createObjectURL(file);
+                              setAvatarUrl(objectUrl);
+                            } catch (e) {
+                              /* ignore */
+                            }
+                            
+                            const storageRef = ref(storage, `profiles/${currentUser.name}_${Date.now()}`);
+                            const snapshot = await uploadBytes(storageRef, file);
+                            const downloadURL = await getDownloadURL(snapshot.ref);
+                            setAvatarUrl(downloadURL);
+                          } catch (err) {
+                            console.error("Error uploading file to storage:", err);
+                            // Fallback to FileReader DataURL if storage fails due to rules
+                            const reader = new FileReader();
+                            reader.onload = (re) => {
+                              if (re.target?.result) setAvatarUrl(re.target.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          } finally {
+                            setIsUploading(false);
+                          }
+                        }
                       }}
-                      className="w-full bg-white text-xs py-2 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 font-mono text-slate-700"
+                      className="w-full text-xs"
+                      disabled={isUploading}
                     />
-                    <p className="text-[10px] text-slate-500">Provide any remote remote-image address to synchronize your customized profile avatar.</p>
+                    {isUploading && <p className="text-[10px] text-indigo-600 font-bold">Uploading...</p>}
+                    
+
                   </div>
                 </div>
               )}
@@ -513,10 +648,16 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
                 </button>
                 <button
                   id="dashboard-edit-button"
-                  onClick={() => setIsEditingProfile(!isEditingProfile)}
+                  onClick={() => {
+                    if (isEditingProfile) {
+                      setShowProfileSaveConfirm(true);
+                    } else {
+                      setIsEditingProfile(true);
+                    }
+                  }}
                   className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100/75 transition-colors px-4 py-2 rounded-lg"
                 >
-                  {isEditingProfile ? "Done Editing" : "Edit Profile Info"}
+                  {isEditingProfile ? "Save Profile" : "Edit Profile Info"}
                 </button>
               </div>
             </div>
@@ -686,7 +827,95 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
                   </button>
                 </form>
               </div>
+            </div>
 
+            {/* My Uploaded Resources Panel */}
+            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-slate-900 font-heading uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-1.5 h-3.5 rounded bg-emerald-500"></span>
+                  My Uploaded Resources
+                </h3>
+                <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">
+                  {myResources.length} Items
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Manage files you've shared in the global academic workspace.
+              </p>
+
+              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                {myResources.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic py-4">No resources uploaded yet.</p>
+                ) : (
+                  myResources.map(res => (
+                    <div key={res.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/50">
+                      {editingResourceId === res.id ? (
+                        <div className="space-y-2">
+                          <input 
+                            value={editingTitle} 
+                            onChange={e => setEditingTitle(e.target.value)}
+                            className="w-full text-xs font-bold text-slate-800 bg-white border border-slate-200 px-2 py-1.5 rounded focus:ring-2 focus:ring-indigo-500"
+                            placeholder="Resource Title"
+                          />
+                          <textarea 
+                            value={editingDesc} 
+                            onChange={e => setEditingDesc(e.target.value)}
+                            className="w-full text-xs text-slate-600 bg-white border border-slate-200 px-2 py-1.5 rounded focus:ring-2 focus:ring-indigo-500"
+                            placeholder="Description"
+                            rows={2}
+                          />
+                          <div className="flex justify-end gap-2 p-1">
+                            <button onClick={() => setEditingResourceId(null)} className="text-[10px] uppercase font-bold text-slate-500 hover:text-slate-700">Cancel</button>
+                            <button onClick={() => handleEditResourceSave(res.id)} className="text-[10px] uppercase font-bold text-emerald-600 hover:text-emerald-800">Save</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="flex justify-between items-start gap-2 mb-1">
+                            <h4 className="font-bold text-sm text-slate-800 leading-tight">{res.title}</h4>
+                            <div className="flex gap-1 shrink-0">
+                               <button 
+                                 onClick={() => {
+                                   setEditingTitle(res.title);
+                                   setEditingDesc(res.description);
+                                   setEditingResourceId(res.id);
+                                 }}
+                                 className="text-indigo-400 hover:text-indigo-600 p-1"
+                                 title="Edit"
+                               >
+                                 <BookOpen className="w-3.5 h-3.5" />
+                               </button>
+                               <button 
+                                 onClick={() => {
+                                   setResourceToDelete(res.id);
+                                   setConfirmStage(1);
+                                 }}
+                                 className="text-red-400 hover:text-red-600 p-1"
+                                 title="Delete"
+                               >
+                                 <X className="w-3.5 h-3.5" />
+                               </button>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed mb-2">
+                            {res.description}
+                          </p>
+                          <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+                             <span className="uppercase text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">{res.type}</span>
+                             <span>{res.fileSize}</span>
+                             {res.fileUrl && (
+                               <a href={res.fileUrl} target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline inline-flex items-center gap-0.5">
+                                 <ExternalLink className="w-2.5 h-2.5" /> View File
+                               </a>
+                             )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
           </div>
@@ -701,7 +930,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
               <div className="bg-white rounded-2xl border border-indigo-100 shadow-md overflow-hidden animate-fade-in">
                 
                 {/* Active Session Header bar */}
-                <div className="bg-gradient-to-r from-indigo-900 to-slate-900 text-white p-5 flex items-center justify-between">
+                <div className="bg-indigo-900 border-b border-indigo-800 text-white p-5 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <button 
                       onClick={() => setActiveWorkspacePeer(null)}
@@ -883,9 +1112,18 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
                             <div key={file.id} className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100 text-xs">
                               <div className="flex items-center gap-2 min-w-0 pr-2">
                                 <FileText className="w-4 h-4 text-indigo-500 shrink-0" />
-                                <span className="font-medium text-slate-700 truncate">{file.name}</span>
+                                {file.fileUrl ? (
+                                  <a href={file.fileUrl} target="_blank" rel="noreferrer" className="font-medium text-indigo-600 hover:underline truncate">
+                                    {file.name}
+                                  </a>
+                                ) : (
+                                  <span className="font-medium text-slate-700 truncate">{file.name}</span>
+                                )}
                               </div>
-                              <span className="text-[10px] text-slate-400 shrink-0 font-mono">{file.size}</span>
+                              <span className="text-[10px] text-slate-400 shrink-0 font-mono flex flex-col items-end">
+                                <span>{file.size}</span>
+                                {file.uploadedAt === "Uploading..." && <span className="text-indigo-400">Uploading...</span>}
+                              </span>
                             </div>
                           ))}
                           {(sharedNotes[activeWorkspacePeer.id] || []).length === 0 && (
@@ -932,23 +1170,6 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
               <div className="space-y-6">
                 
                 {/* Active search matching metrics bar */}
-                <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-900 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
-                  <div className="absolute right-0 bottom-0 opacity-10 translate-y-1/4 translate-x-1/4">
-                    <Sparkles className="w-72 h-72" />
-                  </div>
-                  
-                  <div className="relative max-w-xl">
-                    <span className="bg-indigo-500/40 text-indigo-100 font-bold text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-indigo-400/20 inline-block mb-3">
-                      Match Engine Active
-                    </span>
-                    <h2 className="text-2xl font-bold font-heading mb-2 leading-tight">
-                      Find compatible university trade partners
-                    </h2>
-                    <p className="text-sm text-indigo-100 leading-relaxed">
-                      Our engine automatically searches the student directory to pair your active tags. Swap instruction with reciprocal matches free of cost!
-                    </p>
-                  </div>
-                </div>
 
                 {/* Matching directory grid stack */}
                 <div className="space-y-4">
@@ -1092,6 +1313,131 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
         </div>
 
       </div>
+      
+      <AnimatePresence>
+        {confirmStage > 0 && resourceToDelete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center space-y-5 border border-slate-100"
+            >
+              <div className="mx-auto w-12 h-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4">
+                <X className="w-6 h-6" />
+              </div>
+              
+              {confirmStage === 1 ? (
+                <>
+                  <h3 className="text-lg font-bold text-slate-800 font-heading">Delete Resource?</h3>
+                  <p className="text-sm text-slate-500">Are you sure you want to remove this uploaded resource? It will be permanently removed from the global workspace.</p>
+                  <div className="flex items-center gap-3 justify-center pt-2">
+                    <button 
+                      onClick={() => { setConfirmStage(0); setResourceToDelete(null); }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={() => setConfirmStage(2)}
+                      className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white font-bold text-xs rounded-xl transition-colors"
+                    >
+                      Yes, Delete It
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-bold text-red-600 font-heading">Final Verification</h3>
+                  <p className="text-sm text-slate-600 font-semibold underline decoration-red-200 decoration-2">Are you absolutely sure?</p>
+                  <p className="text-xs text-slate-500">This cannot be undone.</p>
+                  <div className="flex items-center gap-3 justify-center pt-2">
+                    <button 
+                      onClick={() => { setConfirmStage(0); setResourceToDelete(null); }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                    >
+                      No, Keep It
+                    </button>
+                    <button 
+                      onClick={executeDeleteResource}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-md shadow-red-500/20 transition-all border border-red-500"
+                    >
+                      Confirm Deletion
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showProfileSaveConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center space-y-5 border border-slate-100"
+            >
+              <div className="mx-auto w-12 h-12 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-2">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 font-heading">Save Profile Changes?</h3>
+              <p className="text-sm text-slate-500">Are you sure you want to apply these updates to your public profile?</p>
+              
+              <div className="flex items-center gap-3 justify-center pt-4">
+                <button 
+                  onClick={() => setShowProfileSaveConfirm(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={async () => {
+                    setShowProfileSaveConfirm(false);
+                    try {
+                      const { doc, updateDoc } = await import("firebase/firestore");
+                      const { getDocs, query, collection, where } = await import("firebase/firestore");
+                      const q = query(collection(db, "users"), where("email", "==", currentUser.email));
+                      const snap = await getDocs(q);
+                      if (!snap.empty) {
+                        const userDocId = snap.docs[0].id;
+                        await updateDoc(doc(db, "users", userDocId), {
+                          name,
+                          major,
+                          bio,
+                          avatarUrl
+                        });
+                      }
+                      onUpdateUser({ ...currentUser, name, major, bio, avatarUrl });
+                      setIsEditingProfile(false);
+                    } catch (err) {
+                      console.error("Failed to save profile:", err);
+                      alert("Failed to save profile changes.");
+                    }
+                  }}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-colors"
+                >
+                  Apply Updates
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

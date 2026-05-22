@@ -17,7 +17,8 @@ import {
   CheckCircle,
   HelpCircle,
   Lock,
-  ArrowRight
+  ArrowRight,
+  CreditCard
 } from "lucide-react";
 import { CurrentUser } from "./AuthPage";
 
@@ -84,9 +85,142 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
     return filterMatches && searchMatches;
   });
 
+  const [paymentStep, setPaymentStep] = useState<"idle" | "price" | "verification" | "sending" | "complete">("idle");
+  const [purchaseType, setPurchaseType] = useState<"Token" | "Mentor">("Token");
+
+  const handlePurchase = async () => {
+    setPaymentStep("sending");
+    try {
+      const response = await fetch('/api/notify-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: currentUser?.email || 'unknown',
+          paymentType: purchaseType === "Token" ? "TokenPurchase" : "MentorAccess",
+          confirmation: 'Request Pending'
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details?.description || 'Telegram notification failed');
+      }
+
+      setPaymentStep("complete");
+    } catch (error: any) {
+      console.error('Failed to notify:', error);
+      alert(`Error initiating purchase: ${error.message}`);
+      setPaymentStep("price");
+    }
+  };
+
   return (
     <div className="pt-24 min-h-screen bg-slate-50">
       <div className="max-w-6xl mx-auto px-6 py-8">
+        
+        {/* Improved Payment Modal */}
+        <AnimatePresence>
+          {paymentStep !== "idle" && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setPaymentStep("idle")}
+                className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-slate-200"
+              >
+                {paymentStep === "price" && (
+                  <div className="space-y-6">
+                    <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center text-indigo-600 mb-2">
+                       <CreditCard className="w-6 h-6" />
+                    </div>
+                    <div className="text-left">
+                      <h2 className="text-xl font-black text-slate-900 font-heading">Purchase {purchaseType === "Token" ? "Xtokens" : "Mentor Access"}</h2>
+                      <p className="text-sm text-slate-500 mt-1">Select your preferred package to proceed.</p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="p-4 rounded-2xl border-2 border-indigo-600 bg-indigo-50/50 flex justify-between items-center">
+                        <div>
+                          <p className="font-bold text-indigo-900 text-sm">{purchaseType === "Token" ? "100 Xtokens" : "Monthly Mentor Pass"}</p>
+                          <p className="text-[10px] text-indigo-600 font-medium">Instant balance update</p>
+                        </div>
+                        <span className="font-black text-slate-900">$9.99</span>
+                      </div>
+                      <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 flex justify-between items-center opacity-60">
+                        <div>
+                          <p className="font-bold text-slate-700 text-sm">{purchaseType === "Token" ? "250 Xtokens" : "Annual Mentor Pass"}</p>
+                          <p className="text-[10px] text-slate-400 font-medium">Best Value</p>
+                        </div>
+                        <span className="font-black text-slate-400">$19.99</span>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={() => setPaymentStep("verification")}
+                      className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                    >
+                      Process Payment
+                    </button>
+                  </div>
+                )}
+
+                {paymentStep === "verification" && (
+                  <div className="space-y-6 text-center">
+                    <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center text-amber-600 mx-auto animate-pulse">
+                       <HelpCircle className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-black text-slate-900 font-heading">Verify Purchase</h2>
+                      <p className="text-sm text-slate-500 leading-relaxed">
+                        Are you sure you want to proceed with this payment? A notification will be sent to the administrator for manual verification.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => setPaymentStep("price")} className="py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-wider">Back</button>
+                      <button onClick={handlePurchase} className="py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider">Confirm</button>
+                    </div>
+                  </div>
+                )}
+
+                {paymentStep === "sending" && (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-4">
+                    <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                    <p className="font-bold text-slate-900 text-sm">Notifying Administrator...</p>
+                  </div>
+                )}
+
+                {paymentStep === "complete" && (
+                  <div className="space-y-6 text-center">
+                    <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-600 mx-auto">
+                       <CheckCircle className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-black text-slate-900 font-heading">Request Sent!</h2>
+                      <p className="text-sm text-slate-500">
+                        Admin has been notified. Your account will be updated once the transaction is verified.
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => setPaymentStep("idle")} 
+                      className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all"
+                    >
+                      Return to Wallet
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
         
         {/* Navigation Breadcrumb row */}
         <div className="mb-8 flex items-center justify-between">
@@ -125,9 +259,7 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
                   <Wallet className="w-4 h-4" />
                   <span className="font-bold text-xs uppercase tracking-widest">xchange Wallet</span>
                 </div>
-                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-bold px-2.5 py-1 rounded-full border border-indigo-400/20 uppercase">
-                  Verified Wallet Node
-                </span>
+
               </div>
 
               {/* Huge Balance display */}
@@ -141,6 +273,16 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
                     Xtoken
                   </span>
                 </div>
+                <button 
+                  onClick={() => {
+                    setPurchaseType("Token");
+                    setPaymentStep("price");
+                  }}
+                  className="mt-4 flex items-center gap-2 bg-white text-indigo-900 text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-100 transition-colors"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  Purchase Xtoken
+                </button>
               </div>
 
               {/* Progress feedback bar */}
@@ -193,7 +335,7 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
               <div className="space-y-3 pt-3 border-t border-slate-100 text-xs">
                 <div className="flex items-start gap-2.5">
                   <div className="p-1 px-2 bg-indigo-50 text-indigo-700 font-bold font-mono rounded text-[10px] shrink-0 mt-0.5">
-                    +10cr
+                    +10 Xtoken
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-800 leading-tight">Teaching Rewards</h4>
@@ -203,7 +345,7 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
 
                 <div className="flex items-start gap-2.5">
                   <div className="p-1 px-2 bg-purple-50 text-purple-700 font-bold font-mono rounded text-[10px] shrink-0 mt-0.5">
-                    -10cr
+                    -10 Xtoken
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-800 leading-tight">Booking debits</h4>
@@ -215,16 +357,12 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
 
             {/* QR Code static address */}
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex items-center gap-4 text-left">
-              <div className="w-16 h-16 bg-slate-50 rounded-xl border border-slate-150 flex items-center justify-center shrink-0">
-                <QrCode className="w-8 h-8 text-slate-600" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">My Swapper Address</h4>
-                <p className="text-[10px] text-slate-450 font-mono truncate select-all bg-slate-50 border p-1 rounded mt-1">
-                  xch-{currentUser?.email ? btoa(currentUser.email).slice(0, 15) : "node-address"}
-                </p>
-                <span className="text-[8px] text-slate-400 block mt-1">Scannable address for direct token transfers.</span>
-              </div>
+                <div className="min-w-0 flex-1">
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Unique User ID</h4>
+                    <p className="text-[10px] text-slate-450 font-mono truncate select-all bg-slate-50 border p-1 rounded mt-1">
+                        {currentUser?.email ? btoa(currentUser.email).slice(0, 15) : "unknown-user"}
+                    </p>
+                </div>
             </div>
 
           </div>

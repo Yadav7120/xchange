@@ -26,9 +26,25 @@ export interface ChatMessage {
   timestamp: string;
 }
 
+export interface Resource {
+  id: string;
+  title: string;
+  type: string;
+  subject: string;
+  project: string;
+  description: string;
+  author: string;
+  authorEmail: string;
+  date: string;
+  fileSize: string;
+  downloads: number;
+  fileUrl?: string;
+}
+
 export interface NoteFile {
   id: string;
   name: string;
   size: string;
   uploadedAt: string;
+  fileUrl?: string; // Add remote URL
 }

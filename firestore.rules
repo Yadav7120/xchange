@@ -22,7 +22,7 @@ service cloud.firestore {
 
     // User profile matching
     match /users/{userId} {
-      allow read: if isSignedIn(); // Verified peers can retrieve lists
+      allow read: if true; // Open read for matching
       allow create: if isOwner(userId) && isValidUser(request.resource.data);
       allow update: if isOwner(userId) && isValidUser(request.resource.data);
       allow delete: if false;
@@ -38,10 +38,10 @@ service cloud.firestore {
 
     // Resource matching (Shared notes / class documents in academic library)
     match /resources/{resourceId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidResource(request.resource.data);
-      allow update: if isSignedIn() && (request.resource.data.authorEmail == request.auth.token.email) && isValidResource(request.resource.data);
-      allow delete: if isSignedIn() && (resource.data.authorEmail == request.auth.token.email);
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
     }
 
     // Entity validation definitions

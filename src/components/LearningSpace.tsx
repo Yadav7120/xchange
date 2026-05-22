@@ -21,7 +21,15 @@ import {
   Lock,
   ArrowRight,
   ExternalLink,
-  Laptop
+  Laptop,
+  CheckCircle,
+  Check,
+  BookOpen,
+  User,
+  Info,
+  Star,
+  Award,
+  Wallet
 } from "lucide-react";
 import { ChatMessage, NoteFile } from "../types";
 import { CurrentUser } from "./AuthPage";
@@ -35,20 +43,39 @@ interface LearningSpaceProps {
 export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: LearningSpaceProps) {
   // Session states
   const [isJoined, setIsJoined] = useState(false);
+  const [sessionStatus, setSessionStatus] = useState<"not_started" | "active" | "complete">("not_started");
   const [showCompletionOptions, setShowCompletionOptions] = useState(false);
-  const [roomName, setRoomName] = useState("xchange-calculus-guitar-swap");
+  
+  // Unique room name generation (simulating match ID based unique naming)
+  const [roomName] = useState(() => {
+    const timestamp = Date.now().toString().slice(-6);
+    return `xchange-private-session-${timestamp}`;
+  });
+
   const [subject, setSubject] = useState("Calculus & Music Theory Swap");
   const [peerName, setPeerName] = useState("Marcus Vance");
   const [peerAvatar, setPeerAvatar] = useState("https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120");
+  const [activeTab, setActiveTab] = useState<"partner" | "info">("partner");
+  const isMentorSession = roomName.includes("mentor") || subject.toLowerCase().includes("certified");
 
   // Jitsi iFrame room state configuration
   const jitsiBaseUrl = "https://meet.jit.si";
-  const uniqueRoomUrl = `${jitsiBaseUrl}/${encodeURIComponent(roomName)}#config.prejoinPageEnabled=false&userInfo.displayName="Alex Mercer"`;
+  const uniqueRoomUrl = `${jitsiBaseUrl}/${roomName}#config.prejoinPageEnabled=false&interfaceConfig.TOOLBAR_BUTTONS=["microphone","camera","closedcaptions","desktop","fullscreen","fodeviceselection","hangup","profile","chat","recording","livestreaming","etherpad","sharedvideo","settings","raisehand","videoquality","filmstrip","invite","feedback","stats","shortcuts","tileview","videobackgroundblur","download","help","mute-everyone","security"]&userInfo.displayName="${currentUser?.name || "Peer Learner"}"`;
+
+  const handleJoinSession = () => {
+    setIsJoined(true);
+    setSessionStatus("active");
+  };
+
+  const handleEndSession = () => {
+    setIsJoined(false);
+    setSessionStatus("complete");
+    setShowCompletionOptions(true);
+  };
 
   // Automatic billing transaction handlers
   const handleSessionCompletion = (role: "teacher" | "learner" | "none") => {
     setShowCompletionOptions(false);
-    setIsJoined(false);
 
     if (role === "none" || !currentUser) {
       return;
@@ -273,22 +300,27 @@ export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: Le
 
           {/* Action Join & End buttons */}
           <div className="flex items-center gap-3 w-full md:w-auto">
-            {!isJoined ? (
+            {sessionStatus === "not_started" ? (
               <button 
-                onClick={() => setIsJoined(true)}
+                onClick={handleJoinSession}
                 className="w-full md:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-md shadow-indigo-100 transition-colors cursor-pointer"
               >
                 <Video className="w-4 h-4" />
                 Join Live Session
               </button>
-            ) : (
+            ) : sessionStatus === "active" ? (
               <button 
-                onClick={() => setShowCompletionOptions(true)}
+                onClick={handleEndSession}
                 className="w-full md:w-auto flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-md shadow-red-100 transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
-                End & Complete Session
+                End Session
               </button>
+            ) : (
+              <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 px-4 py-2.5 rounded-xl">
+                 <CheckCircle className="w-4 h-4 text-emerald-600" />
+                 <span className="text-xs font-bold text-emerald-700">Session Complete — Tokens Transferred</span>
+              </div>
             )}
             
             <button 
@@ -314,22 +346,183 @@ export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: Le
                   initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.98 }}
-                  className="bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex-1 flex flex-col relative"
+                  className="flex flex-col md:flex-row gap-6 flex-1 min-h-[500px]"
                 >
-                  {/* Embedded Iframe */}
-                  <iframe 
-                    src={uniqueRoomUrl} 
-                    className="w-full h-full min-h-[500px] flex-1 border-0"
-                    allow="camera; microphone; display-capture; autoplay"
-                    referrerPolicy="no-referrer"
-                    title="Jitsi Meet Skill Swap Room"
-                  />
-
-                  {/* Watermark notice */}
-                  <div className="absolute top-4 left-4 bg-slate-950/75 backdrop-blur-sm text-slate-300 text-[10px] px-3 py-1.5 rounded-lg border border-slate-800 pointer-events-none flex items-center gap-1.5 font-medium">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></span>
-                    Secure peer-to-peer Jitsi connection
+                  {/* Embedded Jitsi Video Call iframe container */}
+                  <div className="flex-[3] bg-slate-900 rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative">
+                    <iframe 
+                      src={uniqueRoomUrl} 
+                      className="w-full h-full min-h-[500px] flex-1 border-0"
+                      allow="camera; microphone; display-capture; autoplay; clipboard-write"
+                      referrerPolicy="no-referrer"
+                      title="Jitsi Meet Skill Swap Room"
+                    />
+                    
+                    {/* Watermark notice */}
+                    <div className="absolute top-4 left-4 bg-slate-950/75 backdrop-blur-sm text-slate-300 text-[10px] px-3 py-1.5 rounded-lg border border-slate-800 pointer-events-none flex items-center gap-1.5 font-medium z-10">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></span>
+                      Secure peer-to-peer Jitsi connection
+                    </div>
                   </div>
+
+                  {/* Right Side Panel: Tabs for Profile & Session Info */}
+                  <div className="flex-1 min-w-[280px] bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col overflow-hidden">
+                    <div className="flex border-b border-slate-100 bg-slate-50/50">
+                      <button 
+                        onClick={() => setActiveTab("partner")}
+                        className={`flex-1 py-4 text-[10px] font-bold uppercase tracking-widest flex flex-col items-center gap-1.5 transition-all ${activeTab === 'partner' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        <User className="w-4 h-4" />
+                        Partner
+                      </button>
+                      <button 
+                        onClick={() => setActiveTab("info")}
+                        className={`flex-1 py-4 text-[10px] font-bold uppercase tracking-widest flex flex-col items-center gap-1.5 transition-all ${activeTab === 'info' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-white' : 'text-slate-400 hover:text-slate-600'}`}
+                      >
+                        <Info className="w-4 h-4" />
+                        Details
+                      </button>
+                    </div>
+
+                    <div className="p-6 flex-1 overflow-y-auto">
+                      {activeTab === "partner" ? (
+                        <div className="space-y-6">
+                          <div className="flex flex-col items-center text-center space-y-3">
+                            <div className="relative">
+                              <img 
+                                src={peerAvatar} 
+                                alt={peerName} 
+                                className="w-20 h-20 rounded-3xl object-cover ring-4 ring-indigo-50 shadow-lg"
+                              />
+                              {isMentorSession && (
+                                <div className="absolute -bottom-2 -right-2 bg-amber-500 text-white p-1.5 rounded-xl border-2 border-white shadow-md">
+                                  <Award className="w-4 h-4" />
+                                </div>
+                              )}
+                            </div>
+                            <div>
+                              <h3 className="font-black text-slate-900 font-heading">{peerName}</h3>
+                              <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest">
+                                {isMentorSession ? "University Mentor" : "Peer Contributor"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {isMentorSession && (
+                            <div className="bg-amber-50/80 border border-amber-200 p-4 rounded-2xl space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-amber-800">
+                                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                                  <span className="text-[10px] font-bold uppercase tracking-wider">Top Rated</span>
+                                </div>
+                                <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">4.9 Rep</span>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[10px] text-amber-900/60 font-bold uppercase tracking-tighter">Verified Area</p>
+                                <p className="text-xs font-bold text-amber-900">{subject.split('&')[0]}</p>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="space-y-4">
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Teaching Role</label>
+                              <div className="bg-slate-50 border border-slate-100 px-4 py-3 rounded-xl">
+                                <p className="text-xs font-bold text-slate-800">{subject.split('&')[0]}</p>
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Session Note</label>
+                              <p className="text-[11px] text-slate-500 leading-relaxed bg-indigo-50/30 p-3 rounded-xl border border-indigo-100/50">
+                                Currently matched via xchange core. All credits verified by university node address.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-6">
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-500 font-medium tracking-tight">Session Link</span>
+                              <span className="flex items-center gap-1.5 font-bold text-emerald-600">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Active
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-500 font-medium tracking-tight">Subject</span>
+                              <span className="font-bold text-slate-900">{subject}</span>
+                            </div>
+                          </div>
+
+                          <div className="pt-4 border-t border-slate-100 space-y-4">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Escrow Accounts</label>
+                            
+                            <div className="space-y-3">
+                              <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2 text-indigo-700">
+                                    <Wallet className="w-3.5 h-3.5" />
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Your Balance</span>
+                                  </div>
+                                </div>
+                                <p className="text-lg font-black text-slate-900">{currentUser?.tokens || 0} xt</p>
+                              </div>
+
+                              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2 text-slate-500">
+                                    <Wallet className="w-3.5 h-3.5" />
+                                    <span className="text-[10px] font-bold uppercase tracking-wider">Partner Balance</span>
+                                  </div>
+                                </div>
+                                <p className="text-lg font-black text-slate-900">42 xt</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-start gap-3">
+                             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                             <p className="text-[10px] text-emerald-800 leading-relaxed font-medium">
+                               Exchange secure. 10 xt will be released from escrow upon mutual session completion.
+                             </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-6 bg-slate-50 border-t border-slate-100">
+                       <button 
+                         className="w-full py-3 bg-white border border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
+                         onClick={() => alert("Simulated: Reporting technical connection issue.")}
+                       >
+                         <HelpCircle className="w-3.5 h-3.5" />
+                         Need Help?
+                       </button>
+                    </div>
+                  </div>
+                </motion.div>
+              ) : sessionStatus === "complete" ? (
+                <motion.div 
+                  key="session-complete-view"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  className="bg-emerald-50 rounded-3xl md:p-12 p-8 flex-1 flex flex-col items-center justify-center text-center space-y-6"
+                >
+                  <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-emerald-600 shadow-xl border border-emerald-100">
+                    <CheckCircle className="w-10 h-10" />
+                  </div>
+                  <div className="space-y-2">
+                    <h2 className="text-3xl font-black text-slate-900 font-heading tracking-tight">Session Complete</h2>
+                    <p className="text-slate-600 max-w-sm mx-auto">Tokens have been transferred based on your participation. Thank you for using xchange to grow your skills!</p>
+                  </div>
+                  <button 
+                    onClick={onBackToLanding}
+                    className="bg-slate-900 text-white font-bold text-sm px-8 py-3.5 rounded-xl hover:bg-slate-800 transition-all shadow-lg"
+                  >
+                    Return to Homepage
+                  </button>
                 </motion.div>
               ) : (
                 /* Pre-session Setup Screen */
@@ -349,29 +542,26 @@ export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: Le
                     </div>
 
                     <p className="text-sm text-slate-600 leading-relaxed max-w-2xl bg-slate-50 p-4 rounded-xl border border-slate-100">
-                      You are matched with <strong className="text-indigo-700">{peerName}</strong>. This custom learning space provisions free unlimited high-definition video calling via secure Jitsi Meet pipelines. Take notes, exchange PDF study sheets on the side, and chat!
+                      You are in a private swap space with <strong className="text-indigo-700">{peerName}</strong>. This custom learning space provisions free unlimited high-definition video calling via secure Jitsi Meet pipelines. Take notes, exchange PDF study sheets on the side, and chat!
                     </p>
 
-                    {/* Configuring input fields */}
-                    <div className="grid md:grid-cols-2 gap-4 max-w-lg">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Room Identifier Name</label>
-                        <input 
-                          type="text" 
-                          value={roomName}
-                          onChange={(e) => setRoomName(e.target.value.replace(/\s+/g, '-'))}
-                          className="w-full text-xs font-mono font-bold bg-slate-50 text-indigo-700 border border-slate-200 px-3 py-2 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Core Swap Subjects</label>
-                        <input 
-                          type="text" 
-                          value={subject}
-                          onChange={(e) => setSubject(e.target.value)}
-                          className="w-full text-xs font-sans font-medium bg-slate-50 text-slate-800 border border-slate-200 px-3 py-2 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
+                    {/* Room context display */}
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-4">
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Session Room ID</label>
+                          <div className="bg-white border border-slate-200 px-4 py-3 rounded-xl flex items-center justify-between">
+                            <span className="text-xs font-mono font-bold text-indigo-700">{roomName}</span>
+                            <Lock className="w-3.5 h-3.5 text-slate-300" />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Swap Topic</label>
+                          <div className="bg-white border border-slate-200 px-4 py-3 rounded-xl flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700">{subject}</span>
+                            <BookOpen className="w-3.5 h-3.5 text-slate-300" />
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -391,7 +581,7 @@ export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: Le
                       *By proceeding you authorize the exchange policy of 10 school tokens.
                     </p>
                     <button 
-                      onClick={() => setIsJoined(true)}
+                      onClick={handleJoinSession}
                       className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-8 py-3.5 rounded-xl shadow-lg shadow-indigo-100 hover:shadow-indigo-200 transition-all cursor-pointer"
                     >
                       <Video className="w-4 h-4" />
