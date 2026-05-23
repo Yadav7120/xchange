@@ -199,7 +199,28 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
 
       try {
         await setDoc(doc(db, "resources", createdResource.id), createdResource);
-        alert("Resource shared successfully! You contributed to the communal knowledge base!");
+
+        // Earn 10 tokens for uploading
+        if (currentUser) {
+          const userRef = doc(db, "users", currentUser.email);
+          const newTokens = (currentUser.tokens || 0) + 10;
+          await updateDoc(userRef, { tokens: newTokens });
+
+          // Add transaction history
+          const txId = `tx-${Date.now()}`;
+          const txRef = doc(db, "users", currentUser.email, "transactions", txId);
+          await setDoc(txRef, {
+            id: txId,
+            type: "earn",
+            amount: 10,
+            description: "Earned 10 tokens for uploading a resource",
+            date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+          });
+          
+          onUpdateUser({ ...currentUser, tokens: newTokens });
+        }
+
+        alert("Resource shared successfully! You contributed to the communal knowledge base and earned 10 tokens!");
       } catch (e) {
         console.error("Error saving new shared file to Firestore: ", e);
       }

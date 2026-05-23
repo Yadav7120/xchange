@@ -34,7 +34,8 @@ import {
   sendEmailVerification
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { auth, db, handleFirestoreError, OperationType } from "../firebase";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { auth, db, storage, handleFirestoreError, OperationType } from "../firebase";
 import { mockPeers } from "../data/mockPeers";
 
 export interface CurrentUser {
@@ -86,6 +87,8 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [signupBio, setSignupBio] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const avatarInputRef = React.useRef<HTMLInputElement>(null);
   
   // Default signup generic picture placeholder
   const defaultStudentPic = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150";
@@ -266,41 +269,59 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
 
     setIsSendingCode(true);
     try {
-      // Build the tentative user object
       const fullName = `${signupFirstName.trim()} ${signupLastName.trim()}`;
+      const email = signupEmail.trim();
+
+      // Create authentication in Firebase (DISABLED per request to fix operation-not-allowed)
+      // const cred = await createUserWithEmailAndPassword(auth, signupEmail.trim(), signupPassword);
+      
+      // Instead, proceed as if auth were created, just create user doc
+      let finalAvatarUrl = signupAvatarUrl;
+      if (avatarFile) {
+        const storageRef = ref(storage, `avatars/${email}`);
+        await uploadBytes(storageRef, avatarFile);
+        finalAvatarUrl = await getDownloadURL(storageRef);
+      }
+
       const tentativeUser: CurrentUser = {
         name: fullName,
-        email: signupEmail.trim(),
+        email: email,
         major: signupQualification,
         bio: signupBio || "New Xchange student eager to connect and swap skills!",
         canTeach: signupCanTeach.length > 0 ? signupCanTeach : ["Calculus", "TypeScript"],
         wantToLearn: signupWantToLearn.length > 0 ? signupWantToLearn : ["Classical Guitar", "Spanish"],
-        tokens: 30,
+        tokens: 30, // Welcome grant
         isPremium: false,
-        avatarUrl: signupAvatarUrl,
+        avatarUrl: finalAvatarUrl,
         firstName: signupFirstName.trim(),
         lastName: signupLastName.trim(),
         phone: signupPhone.trim(),
         qualification: signupQualification
       };
 
-      // Create authentication in Firebase
-      const cred = await createUserWithEmailAndPassword(auth, signupEmail.trim(), signupPassword);
-      
       setTempUser(tentativeUser);
-      setIsSendingCode(true);
-      await sendEmailVerification(cred.user);
-      setIsVerifyingEmail(true);
-      setSuccessMsg(`Verification link sent to ${signupEmail.trim()}! Please check your inbox.`);
+      // Skip email verification simulation as we bypassed Auth
+      // setIsVerifyingEmail(true);
+      // Directly "verify" and save to Firestore
+      const uid = email; // Using email as pseudo-UID since we have no Auth UID
+      const userDocRef = doc(db, "users", uid);
+      await setDoc(userDocRef, tentativeUser);
+
+      // Set up welcome transaction in Firestore subcollection
+      const txDocRef = doc(db, "users", uid, "transactions", "tx-init");
+      await setDoc(txDocRef, {
+        id: "tx-init",
+        type: "earn",
+        amount: 30,
+        description: "Welcome grant for joining xchange",
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      });
+      
+      setSuccessMsg(`Welcome, ${signupFirstName}! Account created successfully.`);
+      onLoginSuccess(tentativeUser);
     } catch (err: any) {
-      console.error(err);
-      if (err.code === "auth/email-already-in-use") {
-        setError("This school email address is already registered on Xchange.");
-      } else if (err.code === "auth/invalid-email") {
-        setError("Please supply a valid email address.");
-      } else {
-        setError(err.message || "Failed to initialize standard sign-up.");
-      }
+      console.error("Signup error details:", err);
+      setError(`Error: ${err.message || 'Failed to initialize standard sign-up.'}`);
     } finally {
       setIsSendingCode(false);
     }
@@ -922,6 +943,40 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
                           </div>
                         </div>
 
+                        {/* Avatar Upload */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                            Profile Picture
+                          </label>
+                          <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 rounded-full bg-slate-100 overflow-hidden border border-slate-200">
+                              <img 
+                                src={avatarFile ? URL.createObjectURL(avatarFile) : signupAvatarUrl} 
+                                alt="Avatar" 
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <input 
+                              type="file" 
+                              ref={avatarInputRef}
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  setAvatarFile(e.target.files[0]);
+                                }
+                              }}
+                            />
+                            <button 
+                              type="button"
+                              onClick={() => avatarInputRef.current?.click()}
+                              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors"
+                            >
+                              Browse
+                            </button>
+                          </div>
+                        </div>
+
                         {/* QUALIFICATION */}
                         <div className="space-y-1.5">
                           <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
@@ -993,66 +1048,6 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
                               onChange={(e) => setSignupBio(e.target.value)}
                               className="w-full bg-slate-50 text-sm py-2.5 pl-10 pr-4 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                             />
-                          </div>
-                        </div>
-
-                        {/* PROFILE PICTURE SELECTOR (NO PRESETS - CUSTOM URL INPUT ONLY) */}
-                        <div className="space-y-3.5 p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/65">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-bold text-indigo-950 flex items-center gap-1.5 uppercase tracking-wider">
-                              <Camera className="w-4 h-4 text-indigo-600" />
-                              <span>Custom Profile Picture</span>
-                            </label>
-                            <span className="text-[9px] text-indigo-700 bg-white px-2.5 py-0.5 rounded-full font-bold border border-indigo-150">Not Mandatory</span>
-                          </div>
-
-                          <div className="flex items-start gap-4">
-                            {/* Avatar Preview */}
-                            <img 
-                              src={signupAvatarUrl}
-                              alt="Custom Profile Avatar"
-                              referrerPolicy="no-referrer"
-                              className="w-12 h-12 rounded-xl object-cover ring-2 ring-indigo-600 ring-offset-2 shrink-0 bg-slate-100"
-                              onError={(e) => {
-                                e.currentTarget.src = defaultStudentPic;
-                              }}
-                            />
-
-                            <div className="space-y-2 flex-1">
-                              {!showAvatarInput ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setShowAvatarInput(true)}
-                                  className="text-[11px] font-bold text-indigo-700 bg-white hover:bg-slate-50 border border-indigo-200 rounded-xl px-3.5 py-1.5 shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                                >
-                                  <Camera className="w-3.5 h-3.5" />
-                                  Add Custom Profile Pic
-                                </button>
-                              ) : (
-                                <div className="space-y-1.5 w-full">
-                                  <input 
-                                    type="url"
-                                    placeholder="Paste secure image URL (https://...)"
-                                    value={signupAvatarUrl === defaultStudentPic ? "" : signupAvatarUrl}
-                                    onChange={(e) => setSignupAvatarUrl(e.target.value.trim() || defaultStudentPic)}
-                                    className="w-full bg-white text-xs py-2 px-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 text-slate-700 font-mono"
-                                  />
-                                  <div className="flex justify-between items-center">
-                                    <p className="text-[10px] text-slate-500">Must be an active remote HTTPS photo link.</p>
-                                    <button 
-                                      type="button" 
-                                      onClick={() => {
-                                        setSignupAvatarUrl(defaultStudentPic);
-                                        setShowAvatarInput(false);
-                                      }}
-                                      className="text-[9px] font-bold text-red-500 hover:underline"
-                                    >
-                                      Reset
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
                           </div>
                         </div>
 

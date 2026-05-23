@@ -692,7 +692,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout, 
                 </div>
                 
                 <button 
-                  onClick={() => {/* Navigate to wallet if needed or just trigger purchase modal */}}
+                  onClick={() => onNavigate("wallet")}
                   className="w-full mt-6 py-4 bg-white/10 hover:bg-white/20 border border-white/10 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2"
                 >
                   <ArrowRight className="w-3.5 h-3.5" />
