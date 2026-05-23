@@ -103,9 +103,17 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
         }),
       });
       
+      const contentType = response.headers.get("content-type");
+      let data;
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(text.includes("<html>") ? "Server returned HTML error page instead of JSON. Check your server logs." : "Unexpected response format.");
+      }
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details?.description || 'Telegram notification failed');
+        throw new Error(data.message || data.error || 'Telegram notification failed');
       }
 
       setPaymentStep("complete");
@@ -153,14 +161,14 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
                           <p className="font-bold text-indigo-900 text-sm">{purchaseType === "Token" ? "100 Xtokens" : "Monthly Mentor Pass"}</p>
                           <p className="text-[10px] text-indigo-600 font-medium">Instant balance update</p>
                         </div>
-                        <span className="font-black text-slate-900">$9.99</span>
+                        <span className="font-black text-slate-900">₹{purchaseType === "Token" ? "799" : "1,199"}</span>
                       </div>
                       <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 flex justify-between items-center opacity-60">
                         <div>
                           <p className="font-bold text-slate-700 text-sm">{purchaseType === "Token" ? "250 Xtokens" : "Annual Mentor Pass"}</p>
                           <p className="text-[10px] text-slate-400 font-medium">Best Value</p>
                         </div>
-                        <span className="font-black text-slate-400">$19.99</span>
+                        <span className="font-black text-slate-400">₹{purchaseType === "Token" ? "1,599" : "9,999"}</span>
                       </div>
                     </div>
 
@@ -320,7 +328,7 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
 
             </div>
 
-            {/* AUTOMATED NETWORK POLICY (REPLACES MANUAL SIMULATOR) */}
+            {/* AUTOMATED NETWORK POLICY */}
             <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4 text-left">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-indigo-650 shrink-0" />

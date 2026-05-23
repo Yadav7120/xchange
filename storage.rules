@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      // Allow read/write for now to fix the blocking error in this prototype environment
+      allow read, write: if true;
+    }
+  }
+}

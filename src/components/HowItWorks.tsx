@@ -33,7 +33,13 @@ const containerVariants = {
 
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
+  visible: { 
+    opacity: 1, 
+    y: 0, 
+    transition: { 
+      duration: 0.6
+    } 
+  }
 };
 
 export function HowItWorks() {
@@ -42,7 +48,7 @@ export function HowItWorks() {
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <h2 className="text-3xl md:text-4xl font-bold font-heading text-slate-900 mb-4">
-            How xchange works
+            How Xchange works
           </h2>
           <p className="text-slate-600 text-lg">
             A simple, self-sustaining ecosystem built on mutual knowledge sharing.

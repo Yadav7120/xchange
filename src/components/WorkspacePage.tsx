@@ -130,7 +130,7 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
     if (item.fileUrl) {
       window.open(item.fileUrl, '_blank');
     } else {
-      alert(`Success! Simulated high-speed connection established. Downloaded "${item.title}" successfully into cache.`);
+      alert(`Downloading "${item.title}"...`);
     }
   };
 

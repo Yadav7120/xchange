@@ -26,7 +26,12 @@ import {
   Award,
   Phone,
   Mail,
-  Camera
+  Camera,
+  Zap,
+  TrendingUp,
+  Search,
+  Laptop,
+  Crown
 } from "lucide-react";
 import { Transaction, PeerUser, ChatMessage, NoteFile, Resource } from "../types";
 import { mockPeers } from "../data/mockPeers";
@@ -37,12 +42,13 @@ interface ProfileProps {
   currentUser: CurrentUser;
   onUpdateUser: (updatedUser: CurrentUser) => void;
   onLogout: () => void;
+  onNavigate: (view: "landing" | "profile" | "match" | "learn" | "wallet" | "premium" | "auth" | "workspace") => void;
 }
 
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage, db } from "../firebase";
 
-export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }: ProfileProps) {
+export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout, onNavigate }: ProfileProps) {
   // User profile state
   const [name, setName] = useState(currentUser.name);
   const [major, setMajor] = useState(currentUser.major);
@@ -86,6 +92,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
       canTeach,
       wantToLearn,
       tokens,
+      isPremium: currentUser.isPremium,
       avatarUrl
     });
   }, [name, major, bio, canTeachKey, wantToLearnKey, tokens, avatarUrl]);
@@ -94,7 +101,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
       id: "t-init",
       type: "earn",
       amount: 30,
-      description: "Welcome grant for joining xchange",
+      description: "Welcome grant for joining Xchange",
       date: "May 22, 2026"
     }
   ]);
@@ -212,8 +219,8 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
     setWantToLearn(wantToLearn.filter((_, i) => i !== index));
   };
 
-  // Simulated exchange reward mechanics (10 tokens earned for teaching, spent for learning)
-  const simulateTeachSession = (peerName: string, skill: string) => {
+  // Exchange reward mechanics (10 tokens earned for teaching, spent for learning)
+  const processTeachSession = (peerName: string, skill: string) => {
     const newTx: Transaction = {
       id: `tx-${Date.now()}`,
       type: "earn",
@@ -225,7 +232,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
     setTransactions(prev => [newTx, ...prev]);
   };
 
-  const simulateLearnSession = (peerName: string, skill: string) => {
+  const processLearnSession = (peerName: string, skill: string) => {
     if (tokens < 10) {
       alert("Insufficient Skill Tokens! Please run a teaching session to earn Xtokens first.");
       return;
@@ -342,7 +349,7 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
       if (lowerText.includes("hello") || lowerText.includes("hi") || lowerText.includes("hey")) {
         responseText = `Hi Alex! Thanks for reaching out. I checked your profile. I would absolutely love to trade notes and start practicing together!`;
       } else if (lowerText.includes("token") || lowerText.includes("credit") || lowerText.includes("pay")) {
-        responseText = `The 10-token policy on xchange is awesome because neither of us have to pay cash! I have enough tokens to learn from you, or I can teach you guitar to earn some.`;
+        responseText = `The 10-token policy on Xchange is awesome because neither of us have to pay cash! I have enough tokens to learn from you, or I can teach you guitar to earn some.`;
       } else if (lowerText.includes("meet") || lowerText.includes("time") || lowerText.includes("schedule") || lowerText.includes("zoom")) {
         responseText = `Perfect! Let's hop onto the live room using the 'Join Meeting Room' panel right here on this study card.`;
       } else if (lowerText.includes("pdf") || lowerText.includes("file") || lowerText.includes("note")) {
@@ -469,466 +476,450 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
   };
 
   return (
-    <div className="pt-24 min-h-screen bg-slate-50">
+    <>
+      <div className="pt-24 min-h-screen bg-slate-950 selection:bg-indigo-500/30">
       <div className="max-w-7xl mx-auto px-6 py-8">
         
-        {/* Navigation Breadcrumb back to landing */}
+        {/* Navigation Breadcrumb */}
         <div className="mb-8 flex items-center justify-between">
           <button 
             id="back-home-button"
             onClick={onBackToLanding}
-            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 font-medium transition-colors"
+            className="flex items-center gap-2 text-slate-400 hover:text-white font-medium transition-all group"
           >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Public Homepage
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            Return to Discovery
           </button>
           
-          <div className="flex items-center gap-2 text-sm bg-indigo-50 border border-indigo-100 text-indigo-700 px-4 py-2 rounded-full font-medium">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-            Profile Dashboard
+          <div className="flex items-center gap-2 text-xs bg-slate-900 border border-slate-800 text-indigo-400 px-4 py-2 rounded-full font-bold shadow-xl">
+            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>
+            Scholar Dashboard
           </div>
         </div>
 
-        {/* Dashboard Grid split-pane */}
-        <div className="grid lg:grid-cols-12 gap-8 items-start">
-          
-          {/* Left Column (Profile info, Wallet, Skills) - 5 Cols */}
-          <div className="lg:col-span-4 space-y-6">
+        {/* Improved Bento-Grid Layout */}
+        {!activeWorkspacePeer ? (
+          <div className="space-y-12 animate-fade-in text-left">
             
-            {/* User Profile Info Card */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-2 bg-indigo-500"></div>
-              
-              <div className="flex items-center gap-4 mb-6 mt-2">
-                {avatarUrl ? (
-                  <img 
-                    src={avatarUrl} 
-                    alt={name} 
-                    referrerPolicy="no-referrer"
-                    className="w-16 h-16 rounded-2xl object-cover border-2 border-indigo-100 shadow-sm shrink-0 bg-slate-50"
-                    onError={(e) => {
-                      e.currentTarget.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150";
-                    }}
-                  />
-                ) : (
-                  <div className="w-16 h-16 rounded-2xl bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold text-2xl font-heading shrink-0">
-                    {name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "U"}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1 text-left">
-                  {isEditingProfile ? (
-                    <input 
-                      type="text" 
-                      value={name} 
-                      onChange={(e) => setName(e.target.value)} 
-                      className="text-lg font-bold text-slate-800 border bg-slate-50 rounded-lg px-2 py-1 w-full font-heading focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
-                  ) : (
-                    <h2 className="text-xl font-bold text-slate-900 font-heading truncate">{name}</h2>
-                  )}
-                  {isEditingProfile ? (
-                    <input 
-                      type="text" 
-                      value={major} 
-                      onChange={(e) => setMajor(e.target.value)} 
-                      className="text-xs text-slate-500 border bg-slate-50 rounded-lg px-2 py-0.5 mt-1 w-full focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
-                  ) : (
-                    <p className="text-sm text-slate-500 flex items-center gap-1.5 mt-0.5 font-medium">
-                      <GraduationCap className="w-4 h-4 text-slate-400" />
-                      {major}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Profile pic changer (No presets - Custom URL input only) */}
-              {isEditingProfile && (
-                <div className="mb-6 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/60 mt-2 animate-fade-in text-left">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Custom Profile Image</span>
-                    </label>
-                  </div>
-
-                  <div className="space-y-2">
-                    <input 
-                      type="file"
-                      accept="image/*"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          try {
-                            setIsUploading(true);
-                            // As a fallback for permissions, generate object URL immediately for preview
-                            try {
-                              const objectUrl = URL.createObjectURL(file);
-                              setAvatarUrl(objectUrl);
-                            } catch (e) {
-                              /* ignore */
-                            }
-                            
-                            const storageRef = ref(storage, `profiles/${currentUser.name}_${Date.now()}`);
-                            const snapshot = await uploadBytes(storageRef, file);
-                            const downloadURL = await getDownloadURL(snapshot.ref);
-                            setAvatarUrl(downloadURL);
-                          } catch (err) {
-                            console.error("Error uploading file to storage:", err);
-                            // Fallback to FileReader DataURL if storage fails due to rules
-                            const reader = new FileReader();
-                            reader.onload = (re) => {
-                              if (re.target?.result) setAvatarUrl(re.target.result as string);
-                            };
-                            reader.readAsDataURL(file);
-                          } finally {
-                            setIsUploading(false);
-                          }
-                        }
-                      }}
-                      className="w-full text-xs"
-                      disabled={isUploading}
-                    />
-                    {isUploading && <p className="text-[10px] text-indigo-600 font-bold">Uploading...</p>}
-                    
-
-                  </div>
-                </div>
-              )}
-
-              <div className="mb-6">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Student Bio</p>
-                {isEditingProfile ? (
-                  <textarea 
-                    value={bio} 
-                    onChange={(e) => setBio(e.target.value)} 
-                    rows={3}
-                    className="text-sm text-slate-600 border bg-slate-50 rounded-lg p-2.5 w-full focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  />
-                ) : (
-                  <p className="text-sm text-slate-600 leading-relaxed bg-slate-50/50 p-3 rounded-xl border border-slate-100 italic">
-                    "{bio}"
-                  </p>
-                )}
-              </div>
-
-              {/* Verified School Contact & Credentials */}
-              <div className="mt-4 pt-4 border-t border-slate-100 text-xs space-y-2.5">
-                <div className="flex items-center justify-between font-heading">
-                  <span className="font-bold text-slate-400 uppercase tracking-widest text-[9px]">Verified Student Contact</span>
-                  <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-100">
-                    <ShieldCheck className="w-3 h-3 text-emerald-600" /> Verified Node
-                  </span>
-                </div>
-                <div className="flex items-center gap-2.5 text-slate-650">
-                  <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-                  <span className="font-mono text-slate-700 select-all truncate">{currentUser.email}</span>
-                </div>
-                {currentUser.phone && (
-                  <div className="flex items-center gap-2.5 text-slate-650">
-                    <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                    <span className="font-mono text-slate-700 select-all">{currentUser.phone}</span>
-                  </div>
-                )}
-                {currentUser.qualification && (
-                  <div className="flex items-center gap-2.5 text-slate-650">
-                    <Award className="w-4 h-4 text-indigo-500 shrink-0" />
-                    <span className="text-slate-700 font-medium">{currentUser.qualification}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-between items-center pt-3 border-t border-slate-100">
-                <button
-                  id="dashboard-logout-button"
-                  onClick={onLogout}
-                  className="text-xs font-bold text-red-650 hover:text-red-800 bg-red-50 hover:bg-red-100/75 transition-colors px-4 py-2 rounded-lg cursor-pointer"
-                >
-                  Log Out
-                </button>
-                <button
-                  id="dashboard-edit-button"
-                  onClick={() => {
-                    if (isEditingProfile) {
-                      setShowProfileSaveConfirm(true);
-                    } else {
-                      setIsEditingProfile(true);
-                    }
-                  }}
-                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100/75 transition-colors px-4 py-2 rounded-lg"
-                >
-                  {isEditingProfile ? "Save Profile" : "Edit Profile Info"}
-                </button>
-              </div>
+            {/* DASHBOARD ACTION HIGHLIGHT HUBS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+               {[
+                 { name: "Match Finder", icon: Search, color: "bg-indigo-600", border: "border-indigo-500/20", desc: "Discover peer partners", view: "match" },
+                 { name: "Live Space", icon: Laptop, color: "bg-blue-600", border: "border-blue-500/20", desc: "Digital study rooms", view: "learn" },
+                 { name: "Resources", icon: BookOpen, color: "bg-emerald-600", border: "border-emerald-500/20", desc: "Academic study files", view: "workspace" },
+                 { name: "Get Mentors", icon: Crown, color: "bg-amber-600", border: "border-amber-500/20", desc: "Connect with faculty", view: "premium" }
+               ].map((item, idx) => (
+                 <motion.div
+                   key={idx}
+                   whileHover={{ scale: 1.02, y: -4 }}
+                   onClick={() => onNavigate(item.view as any)}
+                   className={`bg-slate-900/50 backdrop-blur-sm p-6 rounded-[2rem] border ${item.border} shadow-2xl cursor-pointer transition-all flex flex-col items-center text-center group hover:bg-slate-900`}
+                 >
+                   <div className={`${item.color} w-14 h-14 rounded-2xl flex items-center justify-center text-white mb-4 shadow-xl shadow-black/50 group-hover:scale-110 transition-transform`}>
+                      <item.icon className="w-6 h-6" />
+                   </div>
+                   <h4 className="font-bold text-white mb-1">{item.name}</h4>
+                   <p className="text-[11px] text-slate-500">{item.desc}</p>
+                 </motion.div>
+               ))}
             </div>
 
-            {/* Wallet Card - Critical Specification */}
-            <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-xl border border-slate-800 relative overflow-hidden">
-              {/* Abs decoration circles */}
-              <div className="absolute -top-12 -right-12 w-32 h-32 bg-indigo-600/25 rounded-full blur-2xl"></div>
-              <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-purple-600/25 rounded-full blur-2xl"></div>
-
-              <div className="relative">
-                <div className="flex items-center justify-between mb-6">
-                  <span className="text-xs font-bold tracking-widest text-slate-400 uppercase">Skill Exchange Wallet</span>
-                  <Coins className="w-6 h-6 text-yellow-500 animate-spin-slow" />
-                </div>
-
-                <div className="mb-6">
-                  <p className="text-slate-400 text-xs">Current Wallet Balance</p>
-                  <div className="flex items-baseline gap-2 mt-1">
-                    <span className="text-5xl font-black font-heading tracking-tight text-white bg-clip-text bg-gradient-to-r from-white to-slate-200">
-                      {tokens}
-                    </span>
-                    <span className="text-sm font-semibold text-indigo-300">Xtoken</span>
-                  </div>
-                  <p className="text-xs text-indigo-300 mt-2 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                    Earn 10 Xtokens per teaching session!
-                  </p>
-                </div>
-
-                {/* Automated transactional wallet banner (no manual adjustments) */}
-                <div className="bg-slate-800/50 border border-slate-700/50 p-3.5 rounded-2xl mb-6 text-slate-300 text-xs flex items-start gap-2.5 leading-relaxed">
-                  <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-450 mt-0.5" />
-                  <div>
-                    <span className="font-bold text-slate-200">Wallet Automated Mode</span>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Xtoken transaction calculations are triggered automatically on live session completed study states and peer bookings.</p>
-                  </div>
-                </div>
-
-                {/* Transaction history stack */}
-                <div className="border-t border-slate-800 pt-4">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 block">Transaction History</h4>
-                  <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1 text-xs">
-                    {transactions.map(tx => (
-                      <div key={tx.id} className="flex justify-between items-center bg-slate-800/40 p-2.5 rounded-xl border border-slate-800">
-                        <div className="min-w-0 pr-2">
-                          <p className="text-slate-200 truncate font-medium">{tx.description}</p>
-                          <p className="text-[10px] text-slate-400">{tx.date}</p>
-                        </div>
-                        <span className={`font-bold shrink-0 px-2 py-0.5 rounded-full text-[10px] ${
-                          tx.type === "earn" ? "text-green-400 bg-green-500/10" : "text-purple-400 bg-purple-500/10"
-                        }`}>
-                          {tx.type === "earn" ? "+" : "-"}{tx.amount}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Practical Skill Tags Setup Panel */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-6">
+            {/* Top Row: User Primary Info & Wallet Balance */}
+            <div className="grid lg:grid-cols-12 gap-6 items-stretch">
               
-              {/* Can Teach Panel */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-slate-900 font-heading uppercase tracking-wider flex items-center gap-2">
-                    <span className="w-1.5 h-3.5 rounded bg-indigo-600"></span>
-                    Skills I Can Teach
-                  </h3>
-                  <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
-                    {canTeach.length} Skills
-                  </span>
-                </div>
+              {/* User Profile Card - 8 Cols */}
+              <div className="lg:col-span-8 bg-slate-900 rounded-[2.5rem] p-8 border border-slate-800 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-600"></div>
                 
-                <p className="text-xs text-slate-500 mb-4">
-                  These are subjects you've mastered and can tutor schoolmates in.
-                </p>
+                <div className="flex flex-col md:flex-row md:items-center gap-8 mb-8 mt-4">
+                  <div className="relative shrink-0 self-start md:self-center">
+                    {avatarUrl ? (
+                      <img 
+                        src={avatarUrl} 
+                        alt={name} 
+                        referrerPolicy="no-referrer"
+                        className="w-32 h-32 rounded-[2rem] object-cover border-4 border-indigo-50 dark:border-slate-800 shadow-lg bg-slate-50 dark:bg-slate-800 transition-colors"
+                        onError={(e) => {
+                          e.currentTarget.src = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=150";
+                        }}
+                      />
+                    ) : (
+                      <div className="w-32 h-32 rounded-[2rem] bg-indigo-100 dark:bg-slate-800 border border-indigo-200 dark:border-slate-700 flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-bold text-4xl font-heading shrink-0 transition-colors">
+                        {name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "U"}
+                      </div>
+                    )}
+                    {isEditingProfile && (
+                       <label className="absolute -bottom-2 -right-2 p-2 bg-indigo-600 rounded-xl text-white shadow-lg cursor-pointer hover:bg-indigo-700 transition-colors">
+                         <Camera className="w-4 h-4" />
+                         <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*"
+                            onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  try {
+                                    setIsUploading(true);
+                                    const objectUrl = URL.createObjectURL(file);
+                                    setAvatarUrl(objectUrl);
+                                    const storageRef = ref(storage, `profiles/${currentUser.name}_${Date.now()}`);
+                                    const snapshot = await uploadBytes(storageRef, file);
+                                    const downloadURL = await getDownloadURL(snapshot.ref);
+                                    setAvatarUrl(downloadURL);
+                                  } catch (err) {
+                                    console.error(err);
+                                  } finally {
+                                    setIsUploading(false);
+                                  }
+                                }
+                            }}
+                         />
+                       </label>
+                    )}
+                  </div>
 
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {canTeach.map((skill, index) => (
-                    <span 
-                      key={index} 
-                      className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-full text-xs font-medium border border-indigo-100 animate-fade-in"
-                    >
-                      {skill}
-                      <button 
-                        onClick={() => handleRemoveTeachSkill(index)}
-                        className="text-indigo-400 hover:text-indigo-600 focus:outline-none transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
-                  ))}
-                  {canTeach.length === 0 && (
-                    <span className="text-slate-400 text-xs italic">No skills listed yet. Add one below!</span>
-                  )}
-                </div>
-
-                <form onSubmit={handleAddTeachSkill} className="flex gap-2">
-                  <input 
-                    type="text" 
-                    placeholder="e.g., Python, Physics, Piano..." 
-                    value={teachInput}
-                    onChange={(e) => setTeachInput(e.target.value)}
-                    className="flex-1 text-sm bg-slate-50 rounded-xl px-3 py-2 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                  <button 
-                    type="submit"
-                    className="bg-indigo-600 text-white rounded-xl p-2 h-9 w-9 flex items-center justify-center hover:bg-indigo-700 transition-colors shrink-0"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
-                </form>
-              </div>
-
-              {/* Want to Learn Panel */}
-              <div className="border-t border-slate-100 pt-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-slate-900 font-heading uppercase tracking-wider flex items-center gap-2">
-                    <span className="w-1.5 h-3.5 rounded bg-purple-600"></span>
-                    Skills I Want to Learn
-                  </h3>
-                  <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full">
-                    {wantToLearn.length} Skills
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-500 mb-4">
-                  These are subjects you'd like to read up on or master.
-                </p>
-
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {wantToLearn.map((skill, index) => (
-                    <span 
-                      key={index} 
-                      className="inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 px-3 py-1.5 rounded-full text-xs font-medium border border-purple-100 animate-fade-in"
-                    >
-                      {skill}
-                      <button 
-                        onClick={() => handleRemoveLearnSkill(index)}
-                        className="text-purple-400 hover:text-purple-600 focus:outline-none transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
-                  ))}
-                  {wantToLearn.length === 0 && (
-                    <span className="text-slate-400 text-xs italic">No desires listed yet. Add one below!</span>
-                  )}
-                </div>
-
-                <form onSubmit={handleAddLearnSkill} className="flex gap-2">
-                  <input 
-                    type="text" 
-                    placeholder="e.g., French, Chemistry, Jazz..." 
-                    value={learnInput}
-                    onChange={(e) => setLearnInput(e.target.value)}
-                    className="flex-1 text-sm bg-slate-50 rounded-xl px-3 py-2 border border-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                  />
-                  <button 
-                    type="submit"
-                    className="bg-purple-600 text-white rounded-xl p-2 h-9 w-9 flex items-center justify-center hover:bg-purple-700 transition-colors shrink-0"
-                  >
-                    <Plus className="w-5 h-5" />
-                  </button>
-                </form>
-              </div>
-            </div>
-
-            {/* My Uploaded Resources Panel */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm space-y-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold text-slate-900 font-heading uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-1.5 h-3.5 rounded bg-emerald-500"></span>
-                  My Uploaded Resources
-                </h3>
-                <span className="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">
-                  {myResources.length} Items
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Manage files you've shared in the global academic workspace.
-              </p>
-
-              <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                {myResources.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic py-4">No resources uploaded yet.</p>
-                ) : (
-                  myResources.map(res => (
-                    <div key={res.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/50">
-                      {editingResourceId === res.id ? (
-                        <div className="space-y-2">
-                          <input 
-                            value={editingTitle} 
-                            onChange={e => setEditingTitle(e.target.value)}
-                            className="w-full text-xs font-bold text-slate-800 bg-white border border-slate-200 px-2 py-1.5 rounded focus:ring-2 focus:ring-indigo-500"
-                            placeholder="Resource Title"
-                          />
-                          <textarea 
-                            value={editingDesc} 
-                            onChange={e => setEditingDesc(e.target.value)}
-                            className="w-full text-xs text-slate-600 bg-white border border-slate-200 px-2 py-1.5 rounded focus:ring-2 focus:ring-indigo-500"
-                            placeholder="Description"
-                            rows={2}
-                          />
-                          <div className="flex justify-end gap-2 p-1">
-                            <button onClick={() => setEditingResourceId(null)} className="text-[10px] uppercase font-bold text-slate-500 hover:text-slate-700">Cancel</button>
-                            <button onClick={() => handleEditResourceSave(res.id)} className="text-[10px] uppercase font-bold text-emerald-600 hover:text-emerald-800">Save</button>
-                          </div>
-                        </div>
+                  <div className="min-w-0 flex-1 text-left space-y-4">
+                    <div>
+                      {isEditingProfile ? (
+                        <input 
+                          type="text" 
+                          value={name} 
+                          onChange={(e) => setName(e.target.value)} 
+                          className="text-3xl font-black text-slate-900 dark:text-white border-b-2 bg-transparent border-indigo-200 dark:border-slate-700 w-full font-heading focus:border-indigo-600 focus:outline-none transition-colors"
+                        />
                       ) : (
-                        <div>
-                          <div className="flex justify-between items-start gap-2 mb-1">
-                            <h4 className="font-bold text-sm text-slate-800 leading-tight">{res.title}</h4>
-                            <div className="flex gap-1 shrink-0">
-                               <button 
-                                 onClick={() => {
-                                   setEditingTitle(res.title);
-                                   setEditingDesc(res.description);
-                                   setEditingResourceId(res.id);
-                                 }}
-                                 className="text-indigo-400 hover:text-indigo-600 p-1"
-                                 title="Edit"
-                               >
-                                 <BookOpen className="w-3.5 h-3.5" />
-                               </button>
-                               <button 
-                                 onClick={() => {
-                                   setResourceToDelete(res.id);
-                                   setConfirmStage(1);
-                                 }}
-                                 className="text-red-400 hover:text-red-600 p-1"
-                                 title="Delete"
-                               >
-                                 <X className="w-3.5 h-3.5" />
-                               </button>
-                            </div>
-                          </div>
-                          <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed mb-2">
-                            {res.description}
-                          </p>
-                          <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
-                             <span className="uppercase text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">{res.type}</span>
-                             <span>{res.fileSize}</span>
-                             {res.fileUrl && (
-                               <a href={res.fileUrl} target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline inline-flex items-center gap-0.5">
-                                 <ExternalLink className="w-2.5 h-2.5" /> View File
-                               </a>
-                             )}
-                          </div>
-                        </div>
+                        <h2 className="text-4xl font-black text-white font-heading tracking-tight">
+                          {name}
+                          <span className="ml-3 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 uppercase tracking-wider">
+                            Academic Tier
+                          </span>
+                        </h2>
+                      )}
+                      {isEditingProfile ? (
+                        <input 
+                          type="text" 
+                          value={major} 
+                          onChange={(e) => setMajor(e.target.value)} 
+                          className="text-sm text-slate-500 dark:text-slate-400 border bg-slate-50 dark:bg-slate-800 rounded-lg px-3 py-1.5 mt-2 w-full focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                        />
+                      ) : (
+                        <p className="text-base text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-2 font-medium transition-colors">
+                          <GraduationCap className="w-5 h-5 text-indigo-500" />
+                          {major}
+                        </p>
                       )}
                     </div>
-                  ))
-                )}
+
+                    <div className="pt-2">
+                       <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 transition-colors">Bio & Scholar Profile</p>
+                       {isEditingProfile ? (
+                         <textarea 
+                           value={bio} 
+                           onChange={(e) => setBio(e.target.value)} 
+                           rows={3}
+                           className="text-sm text-slate-600 dark:text-slate-300 border bg-slate-50 dark:bg-slate-800 rounded-xl p-3 w-full focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors"
+                         />
+                       ) : (
+                         <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed transition-colors">
+                           {bio}
+                         </p>
+                       )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4 pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
+                   <div className="space-y-3">
+                      <div className="flex items-center gap-2.5 text-slate-600 dark:text-slate-400 text-sm transition-colors">
+                        <Mail className="w-4 h-4 text-slate-400" />
+                        <span className="font-mono truncate">{currentUser.email}</span>
+                      </div>
+                      <div className="flex items-center gap-2.5 text-slate-600 dark:text-slate-400 text-sm transition-colors">
+                        <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                        <span className="font-medium">Verified Academic Node</span>
+                      </div>
+                   </div>
+                   <div className="flex justify-start md:justify-end items-center gap-3">
+                      <button 
+                        onClick={onLogout}
+                        className="text-xs font-bold text-red-650 hover:text-white hover:bg-red-600 bg-red-50 dark:bg-slate-800/50 px-5 py-2.5 rounded-xl transition-all cursor-pointer"
+                      >
+                        Log Out
+                      </button>
+                      <button 
+                        onClick={() => isEditingProfile ? setShowProfileSaveConfirm(true) : setIsEditingProfile(true)}
+                        className="text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all shadow-md active:scale-95"
+                      >
+                        {isEditingProfile ? "Save Changes" : "Update Profile"}
+                      </button>
+                   </div>
+                </div>
+              </div>
+
+              {/* Wallet Integration Card - 4 Cols */}
+              <div className="lg:col-span-4 bg-slate-900 rounded-3xl p-8 text-white shadow-xl border border-slate-800 relative overflow-hidden flex flex-col justify-between">
+                <div className="absolute -top-12 -right-12 w-48 h-48 bg-indigo-600/10 rounded-full blur-3xl"></div>
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-8">
+                    <span className="text-[10px] font-bold tracking-widest text-indigo-400 uppercase">Skill Account Ledger</span>
+                    <Coins className="w-6 h-6 text-amber-500" />
+                  </div>
+
+                  <div className="space-y-2 mb-8">
+                    <p className="text-slate-400 text-xs font-medium">Available Balance</p>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-6xl font-black font-heading tracking-tight tracking-tighter">
+                        {tokens}
+                      </span>
+                      <span className="text-sm font-bold text-indigo-400">Xtoken</span>
+                    </div>
+                    <p className="text-[10px] text-emerald-400 flex items-center gap-1.5 font-bold uppercase tracking-wide mt-2">
+                       <TrendingUp className="w-3 h-3" />
+                       Active Credential Node
+                    </p>
+                  </div>
+
+                  <div className="space-y-3 pt-6 border-t border-slate-800">
+                     <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Recent Deposit</span>
+                        <span className="text-emerald-400 font-bold">+{transactions[0]?.amount || 0} cr</span>
+                     </div>
+                     <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Last Activity</span>
+                        <span className="text-slate-300 font-mono italic">{transactions[0]?.date || "Pending..."}</span>
+                     </div>
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={() => {/* Navigate to wallet if needed or just trigger purchase modal */}}
+                  className="w-full mt-6 py-4 bg-white/10 hover:bg-white/20 border border-white/10 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  View Detailed Transactions
+                </button>
               </div>
             </div>
 
-          </div>
-
-          {/* Right Column: Dynamic Matching Engine and Learning Classroom Space - 8 Cols */}
-          <div className="lg:col-span-8 space-y-6">
-            
-            {/* Split UI: Active Workspace takes precedence if a peer is clicked */}
-            {activeWorkspacePeer ? (
+            {/* Second Row: Skills Inventory & Resources Management */}
+            <div className="grid lg:grid-cols-2 gap-8">
               
-              /* ALL-IN-ONE ACTIVE LEARNING SPACE: Chat, PDF Notes, and Video Link */
-              <div className="bg-white rounded-2xl border border-indigo-100 shadow-md overflow-hidden animate-fade-in">
+              {/* Skills Card */}
+              <div className="bg-slate-900 rounded-[2.5rem] p-8 border border-slate-800 shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity blur-3xl rounded-full"></div>
+                <div className="flex items-center justify-between mb-10 pb-4 border-b border-slate-800">
+                   <h3 className="text-xl font-bold text-white font-heading tracking-tight flex items-center gap-2.5">
+                      <Zap className="w-5 h-5 text-indigo-400 fill-indigo-400/20" />
+                      Skill Inventory
+                   </h3>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-10">
+                   {/* Teach Section */}
+                   <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Knowledge to Share</span>
+                         <span className="bg-indigo-500/10 text-indigo-400 text-[10px] font-bold px-2 py-0.5 rounded-md border border-indigo-500/20">
+                            {canTeach.length} Vectors
+                         </span>
+                      </div>
+                      
+                      <form onSubmit={handleAddTeachSkill} className="relative">
+                        <input 
+                          type="text"
+                          value={teachInput}
+                          onChange={(e) => setTeachInput(e.target.value)}
+                          placeholder="Add a skill you've mastered..."
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-inner"
+                        />
+                        <button 
+                          type="submit"
+                          className="absolute right-2 top-1.5 p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 transition-colors shadow-lg active:scale-95"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </form>
+
+                      <div className="flex flex-wrap gap-2 min-h-[40px]">
+                        {canTeach.map((skill, idx) => (
+                           <motion.span 
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            key={idx} 
+                            className="group bg-slate-950 hover:bg-slate-800 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-medium border border-slate-800 hover:border-indigo-500/50 transition-all flex items-center gap-2 cursor-default"
+                           >
+                              {skill}
+                              <X 
+                                onClick={() => handleRemoveTeachSkill(idx)}
+                                className="w-3 h-3 text-slate-600 hover:text-red-400 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity" 
+                              />
+                           </motion.span>
+                        ))}
+                      </div>
+                   </div>
+
+                   {/* Learn Section */}
+                   <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Growth Targets</span>
+                         <span className="bg-purple-500/10 text-purple-400 text-[10px] font-bold px-2 py-0.5 rounded-md border border-purple-500/20">
+                            {wantToLearn.length} Goals
+                         </span>
+                      </div>
+
+                      <form onSubmit={handleAddLearnSkill} className="relative">
+                        <input 
+                          type="text"
+                          value={learnInput}
+                          onChange={(e) => setLearnInput(e.target.value)}
+                          placeholder="Add a skill you wish to learn..."
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 transition-all shadow-inner"
+                        />
+                        <button 
+                          type="submit"
+                          className="absolute right-2 top-1.5 p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors shadow-lg active:scale-95"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </form>
+
+                      <div className="flex flex-wrap gap-2 min-h-[40px]">
+                        {wantToLearn.map((skill, idx) => (
+                           <motion.span 
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            key={idx} 
+                            className="group bg-slate-950 hover:bg-slate-800 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-medium border border-slate-800 hover:border-purple-500/50 transition-all flex items-center gap-2 cursor-default"
+                           >
+                              {skill}
+                              <X 
+                                onClick={() => handleRemoveLearnSkill(idx)}
+                                className="w-3 h-3 text-slate-600 hover:text-red-400 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity" 
+                              />
+                           </motion.span>
+                        ))}
+                      </div>
+                   </div>
+                </div>
+              </div>
+
+              {/* Resources Card */}
+              <div className="bg-slate-900 rounded-[2.5rem] p-8 border border-slate-800 shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity blur-3xl rounded-full"></div>
+                <div className="flex items-center justify-between mb-10 pb-4 border-b border-slate-800">
+                   <h3 className="text-xl font-bold text-white font-heading tracking-tight flex items-center gap-2.5">
+                      <FileText className="w-5 h-5 text-emerald-400" />
+                      Academic Library
+                   </h3>
+                </div>
                 
+                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                   {myResources.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-slate-600">
+                         <div className="w-12 h-12 bg-slate-950 rounded-2xl flex items-center justify-center border border-slate-800 mb-4">
+                            <Upload className="w-5 h-5 text-slate-700" />
+                         </div>
+                         <p className="text-[10px] font-bold uppercase tracking-widest">No assets published</p>
+                      </div>
+                   ) : (
+                      myResources.map(res => (
+                         <div key={res.id} className="group/item flex items-center gap-4 bg-slate-950 hover:bg-slate-800 p-4 rounded-2xl border border-slate-800 hover:border-emerald-500/30 transition-all">
+                            <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center group-hover/item:scale-110 transition-transform">
+                               <FileText className="w-5 h-5 text-emerald-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                               <h4 className="text-sm font-bold text-slate-200 truncate">{res.title}</h4>
+                               <p className="text-[10px] text-slate-500 font-mono flex items-center gap-2">
+                                 <span className="uppercase">{res.type}</span>
+                                 <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
+                                 <span>{res.fileSize}</span>
+                               </p>
+                            </div>
+                            <button 
+                               onClick={() => {
+                                 setResourceToDelete(res.id);
+                                 setConfirmStage(1);
+                               }}
+                               className="p-2 text-slate-600 hover:text-red-500 transition-colors opacity-0 group-hover/item:opacity-100"
+                            >
+                               <X className="w-4 h-4" />
+                            </button>
+                         </div>
+                      ))
+                   )}
+                </div>
+              </div>
+            </div>
+
+            {/* Matches & Recommended Swaps Section */}
+            <div className="pt-8">
+               <div className="flex items-center justify-between mb-8">
+                  <div className="text-left">
+                     <h3 className="text-2xl font-black text-white font-heading tracking-tight">Xchange Matching Engine</h3>
+                     <p className="text-sm text-slate-500">Live peer recommendations based on your current skill vectors</p>
+                  </div>
+               </div>
+
+               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 {matches.slice(0, 6).map(peer => (
+                    <div 
+                      key={peer.id}
+                      onClick={() => setActiveWorkspacePeer(peer)}
+                      className={`group bg-white dark:bg-slate-900 rounded-3xl p-6 border transition-all cursor-pointer hover:shadow-xl hover:-translate-y-1 ${
+                        peer.directMatch 
+                          ? "border-indigo-200 dark:border-indigo-800 ring-4 ring-indigo-50 dark:ring-indigo-900/20" 
+                          : "border-slate-100 dark:border-slate-800"
+                      }`}
+                    >
+                       <div className="flex items-center gap-4 mb-6">
+                          <img 
+                            src={peer.avatarUrl} 
+                            alt={peer.name} 
+                            className="w-14 h-14 rounded-2xl object-cover border-2 border-white dark:border-slate-800 shadow-sm transition-colors"
+                          />
+                          <div className="min-w-0">
+                             <h4 className="font-bold text-slate-900 dark:text-white truncate transition-colors">{peer.name}</h4>
+                             <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider transition-colors">{peer.major}</p>
+                          </div>
+                       </div>
+                       
+                       <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 mb-4 transition-colors">
+                          <div className="text-center">
+                             <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-1 transition-colors">Trust</p>
+                             <p className="text-sm font-black text-slate-900 dark:text-white transition-colors">{peer.rating}<span className="text-[10px] text-amber-500 ml-0.5">★</span></p>
+                          </div>
+                          <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 transition-colors"></div>
+                          <div className="text-center">
+                             <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-1 transition-colors">Match</p>
+                             <p className="text-sm font-black text-indigo-600 dark:text-indigo-400 transition-colors">{peer.matchScore}%</p>
+                          </div>
+                          <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 transition-colors"></div>
+                          <div className="text-center">
+                             <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mb-1 transition-colors">Trades</p>
+                             <p className="text-sm font-black text-slate-900 dark:text-white transition-colors">{peer.completedExchanges}</p>
+                          </div>
+                       </div>
+
+                       <div className="space-y-4">
+                          <div className="flex items-center gap-2 overflow-hidden">
+                             <span className="text-[9px] font-black text-slate-400 uppercase shrink-0 transition-colors">Swap:</span>
+                             <div className="flex gap-1 overflow-hidden">
+                                {peer.canTeach.slice(0, 2).map((s, i) => (
+                                   <span key={i} className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors whitespace-nowrap">{s}</span>
+                                ))}
+                             </div>
+                          </div>
+                          <button className="w-full py-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 group-hover:bg-indigo-600 group-hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">
+                             Connect to Workspace
+                          </button>
+                       </div>
+                    </div>
+                 ))}
+               </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-indigo-100 dark:border-slate-800 shadow-md overflow-hidden animate-fade-in transition-colors">
                 {/* Active Session Header bar */}
                 <div className="bg-indigo-900 border-b border-indigo-800 text-white p-5 flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -1164,155 +1155,10 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
                 </div>
 
               </div>
-            ) : (
-              
-              /* STANDARD ACTIVE PROFILE DASHBOARD VIEW (MATCHING ENGINE) */
-              <div className="space-y-6">
-                
-                {/* Active search matching metrics bar */}
-
-                {/* Matching directory grid stack */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-slate-900 font-heading">
-                      Recommended Matches Near You
-                    </h3>
-                    <span className="text-xs text-slate-500 font-medium">
-                      Updated live based on tag changes
-                    </span>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-6">
-                    {matches.map(peer => {
-                      // Work out what mutual exchange can happen here
-                      const overlapsLearn = peer.canTeach.filter(s => wantToLearn.some(w => w.toLowerCase() === s.toLowerCase()));
-                      const overlapsTeach = peer.wantToLearn.filter(s => canTeach.some(c => c.toLowerCase() === s.toLowerCase()));
-                      
-                      return (
-                        <div 
-                          key={peer.id} 
-                          className={`bg-white rounded-2xl border transition-all p-5 shadow-sm hover:shadow-md flex flex-col justify-between ${
-                            peer.directMatch 
-                              ? "border-indigo-400 bg-indigo-50/5 ring-1 ring-indigo-300" 
-                              : "border-slate-100"
-                          }`}
-                        >
-                          <div>
-                            {/* Score header */}
-                            <div className="flex items-center justify-between mb-4">
-                              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                                peer.directMatch 
-                                  ? "bg-indigo-100 text-indigo-700 border border-indigo-200" 
-                                  : "bg-slate-150 text-slate-650"
-                              }`}>
-                                {peer.directMatch ? "⚡ 100% Reciprocal Trade Match" : `✓ ${peer.matchScore}% Match Rate`}
-                              </span>
-                              <span className="text-xs text-yellow-500 font-bold flex items-center gap-1 font-heading">
-                                ★ {peer.rating} <span className="text-slate-400 font-normal">({peer.completedExchanges} trades)</span>
-                              </span>
-                            </div>
-
-                            {/* Info */}
-                            <div className="flex items-start gap-3 mb-4">
-                              <img 
-                                src={peer.avatarUrl} 
-                                alt={peer.name} 
-                                referrerPolicy="no-referrer"
-                                className="w-12 h-12 rounded-xl object-cover shrink-0 border border-slate-100"
-                              />
-                              <div className="min-w-0">
-                                <h4 className="font-bold text-slate-900 font-heading leading-none">{peer.name}</h4>
-                                <span className="text-[10px] text-slate-400 font-medium">{peer.major}</span>
-                                <p className="text-xs text-slate-600 mt-2 line-clamp-2 leading-relaxed">
-                                  {peer.bio}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Overlapping Trade analysis */}
-                            <div className="bg-slate-50 rounded-xl p-3 space-y-2.5 mb-4 text-xs font-medium border border-slate-100">
-                              <div>
-                                <span className="text-slate-400 text-[10px] block mb-1 uppercase tracking-wider font-bold">They Can Teach You:</span>
-                                <div className="flex flex-wrap gap-1">
-                                  {peer.canTeach.map((tag, i) => {
-                                    const isTargeted = wantToLearn.some(w => w.toLowerCase() === tag.toLowerCase());
-                                    return (
-                                      <span key={i} className={`px-2 py-0.5 rounded text-[10px] ${
-                                        isTargeted 
-                                          ? "bg-purple-100 text-purple-700 font-bold border border-purple-200" 
-                                          : "bg-slate-200 text-slate-650"
-                                      }`}>
-                                        {tag}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-
-                              <div>
-                                <span className="text-slate-400 text-[10px] block mb-1 uppercase tracking-wider font-bold">They Want To Learn:</span>
-                                <div className="flex flex-wrap gap-1">
-                                  {peer.wantToLearn.map((tag, i) => {
-                                    const isTargeted = canTeach.some(c => c.toLowerCase() === tag.toLowerCase());
-                                    return (
-                                      <span key={i} className={`px-2 py-0.5 rounded text-[10px] ${
-                                        isTargeted 
-                                          ? "bg-indigo-100 text-indigo-700 font-bold border border-indigo-200" 
-                                          : "bg-slate-200 text-slate-650"
-                                      }`}>
-                                        {tag}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Action Button */}
-                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-[10px] text-slate-450 italic">
-                              {overlapsLearn.length > 0 && overlapsTeach.length > 0 
-                                ? "Full swap match!" 
-                                : overlapsLearn.length > 0 
-                                ? "Earn match!" 
-                                : "Overlapping trade tags"}
-                            </span>
-                            <button
-                              onClick={() => {
-                                setActiveWorkspacePeer(peer);
-                                // Initialize chat if not exists
-                                if (!conversations[peer.id]) {
-                                  setConversations(prev => ({
-                                    ...prev,
-                                    [peer.id]: [
-                                      { id: "m-start", sender: "peer", text: `Hi there! I would love to schedule a skill trading session. I can help you with ${peer.canTeach.join(" or ")}!`, timestamp: "Just now" }
-                                    ]
-                                  }));
-                                }
-                              }}
-                              className="inline-flex items-center gap-1 bg-indigo-650 hover:bg-indigo-705 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-sm hover:shadow"
-                            >
-                              <span>Exchange Skills</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-              </div>
-
             )}
-
           </div>
 
         </div>
-
-      </div>
       
       <AnimatePresence>
         {confirmStage > 0 && resourceToDelete && (
@@ -1437,7 +1283,6 @@ export function Profile({ onBackToLanding, currentUser, onUpdateUser, onLogout }
           </motion.div>
         )}
       </AnimatePresence>
-
-    </div>
+    </>
   );
 }

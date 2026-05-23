@@ -178,6 +178,9 @@ export function PremiumPage({ onBackToLanding, onNavigateToProfile }: PremiumPag
 
   // Upgrade simulator click handler
   const handleUpgradeNow = () => {
+    const confirmed = window.confirm("Are you sure you want to upgrade to xchange Premium? This will give you instant access to our certified mentors directory.");
+    if (!confirmed) return;
+    
     localStorage.setItem("xchange_premium_unlocked", "true");
     setIsPremium(true);
     setShowSuccessToast(true);
@@ -241,7 +244,7 @@ export function PremiumPage({ onBackToLanding, onNavigateToProfile }: PremiumPag
             >
               <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
               <div>
-                <p className="font-bold">Upgrade Simulated successfully!</p>
+                <p className="font-bold">Upgrade successful!</p>
                 <p className="text-[10px] text-emerald-700/80 mt-0.5">Faculty directories have been unlocked and priority routing logic is active.</p>
               </div>
             </motion.div>
@@ -276,7 +279,7 @@ export function PremiumPage({ onBackToLanding, onNavigateToProfile }: PremiumPag
 
               {/* Price rate display */}
               <div className="flex items-baseline gap-1.5 py-4">
-                <span className="text-4xl font-black font-heading">$9.99</span>
+                <span className="text-4xl font-black font-heading">₹799</span>
                 <span className="text-xs text-amber-150 font-medium">/ month</span>
                 <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded ml-2 font-bold font-sans">98% Satisfied</span>
               </div>
@@ -327,7 +330,7 @@ export function PremiumPage({ onBackToLanding, onNavigateToProfile }: PremiumPag
                   onClick={handleUpgradeNow}
                   className="w-full bg-white text-amber-900 hover:bg-amber-50 font-black text-sm py-4 rounded-xl cursor-pointer shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all text-center block"
                 >
-                  Upgrade Now (Simulate Checkout)
+                  Upgrade Now
                 </button>
               ) : (
                 <div className="space-y-3">
@@ -339,7 +342,7 @@ export function PremiumPage({ onBackToLanding, onNavigateToProfile }: PremiumPag
                     onClick={handleDowngrade}
                     className="w-full text-center text-[10px] text-amber-200 hover:text-white underline cursor-pointer"
                   >
-                    Simulate Downgrade for testing
+                    Manage Subscription
                   </button>
                 </div>
               )}

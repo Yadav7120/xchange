@@ -8,10 +8,10 @@ export function Footer() {
           <div className="w-6 h-6 rounded bg-indigo-600 flex items-center justify-center">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
-          xchange
+          Xchange
         </div>
         <div className="text-sm text-slate-500">
-          © {new Date().getFullYear()} xchange platform. All rights reserved.
+          © {new Date().getFullYear()} Xchange platform. All rights reserved.
         </div>
         <div className="flex items-center gap-6 text-sm font-medium text-slate-600">
           <a href="#" className="hover:text-slate-900 transition-colors">Privacy</a>

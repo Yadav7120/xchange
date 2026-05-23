@@ -48,3 +48,16 @@ export interface NoteFile {
   uploadedAt: string;
   fileUrl?: string; // Add remote URL
 }
+
+export interface SkillRequest {
+  id: string;
+  fromId: string;
+  fromName: string;
+  fromAvatar?: string;
+  fromEmail: string;
+  toId: string;
+  skillTitle: string;
+  message: string;
+  status: "pending" | "accepted" | "rejected";
+  timestamp: string;
+}

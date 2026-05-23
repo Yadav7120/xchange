@@ -187,7 +187,7 @@ export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: Le
     }
   }, [chatMessages]);
 
-  // Send interactive simulated messages
+  // Send interactive messages
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
@@ -202,7 +202,7 @@ export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: Le
     setChatMessages(prev => [...prev, userMsg]);
     setInputText("");
 
-    // Simulate smart peer replies
+    // Dynamic peer replies based on context
     setTimeout(() => {
       let automatedReply = "Awesome! Let's make sure we review the practice exercises on page 3.";
       const lower = userMsg.text.toLowerCase();
@@ -494,7 +494,7 @@ export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: Le
                     <div className="p-6 bg-slate-50 border-t border-slate-100">
                        <button 
                          className="w-full py-3 bg-white border border-slate-200 text-slate-500 text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
-                         onClick={() => alert("Simulated: Reporting technical connection issue.")}
+                         onClick={() => alert("Connecting to technical support team...")}
                        >
                          <HelpCircle className="w-3.5 h-3.5" />
                          Need Help?

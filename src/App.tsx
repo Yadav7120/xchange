@@ -1,6 +1,7 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ * Last Updated: 2026-05-23
  */
 
 import { useState, useEffect } from "react";
@@ -20,6 +21,8 @@ import { WalletPage } from "./components/WalletPage";
 import { PremiumPage } from "./components/PremiumPage";
 import { AuthPage, CurrentUser } from "./components/AuthPage";
 import { WorkspacePage } from "./components/WorkspacePage";
+import { AssistantBot } from "./components/AssistantBot";
+import { SkillRequest } from "./types";
 
 type ActiveView = "landing" | "profile" | "match" | "learn" | "wallet" | "premium" | "auth" | "workspace";
 
@@ -49,13 +52,85 @@ export default function App() {
       bio: "Software senior seeking to trade computer science concepts for foreign languages and music theory lessons. Love hands-on practice!",
       canTeach: ["Calculus", "TypeScript", "UI Design"],
       wantToLearn: ["Classical Guitar", "Machine Learning", "Spanish"],
-      tokens: 30 // Set default token for the user to 30
+      tokens: 30, // Set default token for the user to 30
+      isPremium: false
     };
     localStorage.setItem("xchange_logged_in_user", JSON.stringify(defaultUser));
     return defaultUser;
   });
 
   const [view, setView] = useState<ActiveView>("landing"); 
+
+  const [requests, setRequests] = useState<SkillRequest[]>([]);
+
+  // Load requests from storage
+  useEffect(() => {
+    if (currentUser) {
+      const saved = localStorage.getItem(`xchange_requests_${currentUser.email}`);
+      if (saved) {
+        try {
+          setRequests(JSON.parse(saved));
+        } catch (e) {
+          console.error("Failed to parse requests", e);
+        }
+      }
+    } else {
+      setRequests([]);
+    }
+  }, [currentUser?.email]);
+
+  const handleSendRequest = (request: SkillRequest) => {
+    // 1. DELIVER to recipient: In this localStorage demo, we write to the recipient's storage key
+    try {
+      const recipientKey = `xchange_requests_${request.toId}`;
+      const existing = localStorage.getItem(recipientKey);
+      const recipientRequests = existing ? JSON.parse(existing) : [];
+      
+      const newRequest: SkillRequest = { ...request, id: `req-${Date.now()}` };
+      const updated = [newRequest, ...recipientRequests];
+      
+      localStorage.setItem(recipientKey, JSON.stringify(updated));
+      console.log(`[Demo] Delivered request to ${request.toId}`);
+
+      // 2. SIMULATE receiving an incoming request from that same peer shortly after
+      // This allows the user to see the notification bar in action
+      setTimeout(() => {
+        const demoIncoming: SkillRequest = {
+          id: `incoming-${Date.now()}`,
+          fromId: request.toId,
+          fromName: "Academic Peer",
+          fromAvatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=150",
+          fromEmail: request.toId,
+          toId: currentUser?.email || "target",
+          skillTitle: currentUser?.canTeach[0] || "Knowledge",
+          message: `Hey ${currentUser?.name}! I got your request. I'd actually love to learn ${currentUser?.canTeach[0]} from you as well. Want to swap?`,
+          status: "pending",
+          timestamp: new Date().toISOString()
+        };
+        
+        setRequests(prev => {
+          const updated = [demoIncoming, ...prev];
+          if (currentUser) {
+            localStorage.setItem(`xchange_requests_${currentUser.email}`, JSON.stringify(updated));
+          }
+          return updated;
+        });
+      }, 3000);
+
+    } catch (e) {
+      console.error("Failed to deliver request to recipient's local storage", e);
+    }
+  };
+
+  const handleUpdateReqStatus = (reqId: string, status: "accepted" | "rejected") => {
+    setRequests(prev => {
+      const updated = prev.map(r => r.id === reqId ? { ...r, status } : r);
+      if (currentUser) {
+        localStorage.setItem(`xchange_requests_${currentUser.email}`, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
 
   // Watch Firebase Auth status changes
   useEffect(() => {
@@ -73,6 +148,7 @@ export default function App() {
               canTeach: data.canTeach || [],
               wantToLearn: data.wantToLearn || [],
               tokens: typeof data.tokens === "number" ? data.tokens : 30,
+              isPremium: !!data.isPremium,
               avatarUrl: data.avatarUrl || user.photoURL || undefined,
               firstName: data.firstName || "",
               lastName: data.lastName || "",
@@ -90,10 +166,11 @@ export default function App() {
               name: user.displayName || "Student Swapper",
               email: user.email || "",
               major: "Interdisciplinary Exchange Candidate",
-              bio: "Connected instantly using academic credentials! Keen to match skills with university peers on xchange.",
+              bio: "Connected instantly using academic credentials! Keen to match skills with university peers on Xchange.",
               canTeach: ["Calculus", "TypeScript"],
               wantToLearn: ["Classical Guitar", "Spanish"],
               tokens: 30,
+              isPremium: false,
               avatarUrl: user.photoURL || undefined,
               firstName,
               lastName,
@@ -150,6 +227,7 @@ export default function App() {
           canTeach: updatedUser.canTeach,
           wantToLearn: updatedUser.wantToLearn,
           tokens: updatedUser.tokens,
+          isPremium: updatedUser.isPremium,
           avatarUrl: updatedUser.avatarUrl || "",
           firstName: updatedUser.firstName || "",
           lastName: updatedUser.lastName || "",
@@ -180,8 +258,10 @@ export default function App() {
         onNavigate={handleNavigate} 
         currentUser={currentUser}
         onLogout={() => setShowLogoutConfirm(true)}
+        requests={requests}
+        onUpdateReqStatus={handleUpdateReqStatus}
       />
-      <main>
+      <main className="pt-20">
         {view === "landing" ? (
           <>
             <Hero onGetStarted={() => handleNavigate(currentUser ? "profile" : "auth")} />
@@ -199,6 +279,7 @@ export default function App() {
               currentUser={currentUser}
               onUpdateUser={handleUpdateUser}
               onLogout={() => setShowLogoutConfirm(true)}
+              onNavigate={handleNavigate}
             />
           ) : (
             <AuthPage 
@@ -218,6 +299,7 @@ export default function App() {
             onNavigateToProfile={() => setView("profile")}
             currentUser={currentUser}
             onUpdateUser={handleUpdateUser}
+            onSendRequest={handleSendRequest}
           />
         ) : view === "learn" ? (
           <LearningSpace 
@@ -262,7 +344,7 @@ export default function App() {
               <div className="space-y-1.5">
                 <h3 className="text-lg font-black text-slate-800 font-heading">Confirm Log Out</h3>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Are you sure you want to end your xchange session? You will need to re-verify your registered email to search for swaps next time.
+                  Are you sure you want to end your Xchange session? You will need to re-verify your registered email to search for swaps next time.
                 </p>
               </div>
               <div className="flex gap-3 pt-2">
@@ -286,6 +368,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      <AssistantBot />
     </div>
   );
 }

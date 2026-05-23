@@ -45,6 +45,7 @@ export interface CurrentUser {
   canTeach: string[];
   wantToLearn: string[];
   tokens: number;
+  isPremium: boolean;
   avatarUrl?: string;
   firstName?: string;
   lastName?: string;
@@ -181,6 +182,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
           canTeach: uData.canTeach || [],
           wantToLearn: uData.wantToLearn || [],
           tokens: typeof uData.tokens === "number" ? uData.tokens : 30,
+          isPremium: !!uData.isPremium,
           avatarUrl: uData.avatarUrl || defaultStudentPic,
           firstName: uData.firstName || firstName,
           lastName: uData.lastName || lastName,
@@ -196,6 +198,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
           canTeach: ["Calculus", "TypeScript"],
           wantToLearn: ["Classical Guitar", "Spanish"],
           tokens: 30,
+          isPremium: false,
           avatarUrl: cred.user.photoURL || defaultStudentPic,
           firstName,
           lastName,
@@ -269,10 +272,11 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
         name: fullName,
         email: signupEmail.trim(),
         major: signupQualification,
-        bio: signupBio || "New xchange student eager to connect and swap skills!",
+        bio: signupBio || "New Xchange student eager to connect and swap skills!",
         canTeach: signupCanTeach.length > 0 ? signupCanTeach : ["Calculus", "TypeScript"],
         wantToLearn: signupWantToLearn.length > 0 ? signupWantToLearn : ["Classical Guitar", "Spanish"],
         tokens: 30,
+        isPremium: false,
         avatarUrl: signupAvatarUrl,
         firstName: signupFirstName.trim(),
         lastName: signupLastName.trim(),
@@ -291,7 +295,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
     } catch (err: any) {
       console.error(err);
       if (err.code === "auth/email-already-in-use") {
-        setError("This school email address is already registered on xchange.");
+        setError("This school email address is already registered on Xchange.");
       } else if (err.code === "auth/invalid-email") {
         setError("Please supply a valid email address.");
       } else {
@@ -337,6 +341,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
               canTeach: tempUser.canTeach,
               wantToLearn: tempUser.wantToLearn,
               tokens: tempUser.tokens,
+              isPremium: tempUser.isPremium,
               avatarUrl: tempUser.avatarUrl,
               firstName: tempUser.firstName,
               lastName: tempUser.lastName,
@@ -449,6 +454,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
           canTeach: uData.canTeach || [],
           wantToLearn: uData.wantToLearn || [],
           tokens: typeof uData.tokens === "number" ? uData.tokens : 30,
+          isPremium: !!uData.isPremium,
           avatarUrl: uData.avatarUrl || user.photoURL || defaultStudentPic,
           firstName: uData.firstName || user.displayName?.split(" ")[0] || "Student",
           lastName: uData.lastName || user.displayName?.split(" ").slice(1).join(" ") || "",
@@ -468,6 +474,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
           canTeach: ["Calculus", "Basic Programming"],
           wantToLearn: ["Spanish", "Introduction to Psychology"],
           tokens: 30,
+          isPremium: false,
           avatarUrl: user.photoURL || defaultStudentPic,
           firstName,
           lastName,
@@ -524,6 +531,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
         canTeach: ["Calculus", "Basic Programming"],
         wantToLearn: ["Spanish", "Introduction to Psychology"],
         tokens: 30,
+        isPremium: false,
         avatarUrl: avatar,
         firstName,
         lastName,
@@ -552,7 +560,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
               <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
-              <span className="font-heading font-black text-xl tracking-tight text-white">xchange</span>
+              <span className="font-heading font-black text-xl tracking-tight text-white">Xchange</span>
             </div>
 
             <div className="space-y-4 pt-12">
@@ -585,7 +593,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
           </div>
 
           <div className="pt-8 text-[11px] text-indigo-300">
-            © 2026 xchange community. Built securely for students, by students.
+            © 2026 Xchange community. Built securely for students, by students.
           </div>
         </div>
 
@@ -1210,7 +1218,7 @@ export function AuthPage({ onLoginSuccess, onBackToLanding, initialMode = "login
                         </button>
                       </form>
 
-                      {/* SIMULATED SMTP WEB OUTBOX RESET BANNER */}
+                      {/* EMAIL RESET OUTBOX BANNER */}
                       {generatedResetLink && (
                         <div className="p-4 bg-indigo-50/80 border border-indigo-200 text-indigo-900 rounded-2xl text-xs space-y-2.5 animate-fade-in">
                           <div className="flex items-center justify-between font-bold text-indigo-950 uppercase tracking-widest text-[9px]">

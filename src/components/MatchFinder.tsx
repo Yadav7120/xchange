@@ -21,9 +21,11 @@ import {
   HelpCircle,
   TrendingUp,
   Mail,
-  Zap
+  Zap,
+  MessageSquare,
+  Send
 } from "lucide-react";
-import { PeerUser } from "../types";
+import { PeerUser, SkillRequest } from "../types";
 import { mockPeers } from "../data/mockPeers";
 import { CurrentUser } from "./AuthPage";
 
@@ -32,9 +34,10 @@ interface MatchFinderProps {
   onNavigateToProfile: () => void;
   currentUser: CurrentUser | null;
   onUpdateUser: (user: CurrentUser) => void;
+  onSendRequest: (request: SkillRequest) => void;
 }
 
-export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser, onUpdateUser }: MatchFinderProps) {
+export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser, onUpdateUser, onSendRequest }: MatchFinderProps) {
   // Config state
   const [teachSkill, setTeachSkill] = useState("Calculus");
   const [learnSkill, setLearnSkill] = useState("Spanish");
@@ -44,6 +47,29 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
   const [status, setStatus] = useState<"idle" | "searching" | "matched" | "no_match" | "accepted">("idle");
   const [matchedPeer, setMatchedPeer] = useState<PeerUser | null>(null);
   const [searchDuration, setSearchDuration] = useState(3000); // ms
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestMessage, setRequestMessage] = useState("");
+
+  const handleSendSwapRequest = () => {
+    if (!currentUser || !matchedPeer) return;
+
+    const request: SkillRequest = {
+      id: `req-${Date.now()}`,
+      fromId: currentUser.email,
+      fromName: currentUser.name,
+      fromAvatar: currentUser.avatarUrl,
+      fromEmail: currentUser.email,
+      toId: matchedPeer.id,
+      skillTitle: learnSkill,
+      message: requestMessage || `Hi ${matchedPeer.name}! I'd love to swap skills with you.`,
+      status: "pending",
+      timestamp: new Date().toISOString(),
+    };
+
+    onSendRequest(request);
+    setShowRequestModal(false);
+    setStatus("accepted"); // Borrowing accepted state for "sent" feedback
+  };
 
   const handleAcceptMatch = () => {
     if (!currentUser) {
@@ -137,12 +163,12 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
   }, [status, scanAvatars]);
 
   // Handle Match Search trigger
-  const handleSearch = (simulateNoMatch: boolean = false) => {
+  const handleSearch = () => {
     setStatus("searching");
     setMatchedPeer(null);
 
     setTimeout(() => {
-      if (simulateNoMatch || teachSkill.trim().toLowerCase() === "unknown obscure skill") {
+      if (teachSkill.trim().toLowerCase() === "unknown obscure skill") {
         setStatus("no_match");
       } else {
         // Find best match in real database
@@ -153,7 +179,7 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
           return teachesMatch || wantsMatch;
         });
 
-        // fallback to first peer if no direct found but we wanted to simulate a match
+        // fallback to first peer if no direct found
         const finalMatch = lookForMatch || (allUsers.length > 0 ? allUsers[0] : null);
         
         if (finalMatch) {
@@ -183,9 +209,17 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
         }),
       });
       
+      const contentType = response.headers.get("content-type");
+      let data;
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error(text.includes("<html>") ? "Server returned HTML error page instead of JSON. Check your server logs." : "Unexpected response format.");
+      }
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details?.description || 'Telegram notification failed');
+        throw new Error(data.message || data.error || 'Telegram notification failed');
       }
 
       setPaymentStep("complete");
@@ -232,7 +266,15 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
                         <p className="font-bold text-indigo-900 text-sm">Monthly Mentor Pass</p>
                         <p className="text-[10px] text-indigo-600 font-medium">Verified expert routing</p>
                       </div>
-                      <span className="font-black text-slate-900">$14.99</span>
+                      <span className="font-black text-slate-900">₹1,199</span>
+                    </div>
+
+                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
+                      <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="text-xs text-amber-900 leading-relaxed">
+                        <p className="font-bold">Member Verification Policy</p>
+                        <p className="mt-1">All premium mentors undergo background checks. By proceeding, you agree to our academic integrity terms and verification process.</p>
+                      </div>
                     </div>
 
                     <button 
@@ -373,38 +415,15 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
 
                   </div>
 
-                  {/* Simulator action shortcuts */}
+                  {/* Search action */}
                   <div className="space-y-3">
                     <button 
-                      onClick={() => handleSearch(false)}
+                      onClick={() => handleSearch()}
                       className="w-full bg-gradient-to-r from-indigo-600 to-indigo-800 hover:from-indigo-700 hover:to-indigo-900 text-white font-bold text-sm py-4 rounded-xl shadow-lg shadow-indigo-100 hover:shadow-indigo-200 transition-all cursor-pointer flex items-center justify-center gap-2"
                     >
                       <Search className="w-4 h-4" />
                       Find Reciprocal Match
                     </button>
-
-                    <div className="grid grid-cols-2 gap-3 pt-2">
-                      <button 
-                        onClick={() => {
-                          setTeachSkill("Linear Algebra");
-                          setLearnSkill("Classical Guitar");
-                          handleSearch(false);
-                        }}
-                        className="text-xs bg-slate-50 border border-slate-200 text-slate-600 py-2.5 px-3 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                      >
-                        ⚡ Standard Swap Preset
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setTeachSkill("Quantum Astrophysics");
-                          setLearnSkill("Ancient Swahili Dialect");
-                          handleSearch(true);
-                        }}
-                        className="text-xs bg-purple-50 border border-purple-100 text-purple-700 py-2.5 px-3 rounded-lg hover:bg-purple-100/50 transition-colors cursor-pointer"
-                      >
-                        ❌ Force "No Match" Scenario
-                      </button>
-                    </div>
                   </div>
                 </motion.div>
               )}
@@ -517,16 +536,16 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
                   <div className="grid grid-cols-2 gap-3">
                     <button 
                       onClick={() => setStatus("idle")}
-                      className="text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl py-3 cursor-pointer"
+                      className="text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl py-3 cursor-pointer uppercase tracking-wider"
                     >
-                      Reject Match
+                      Search Again
                     </button>
                     <button 
-                      onClick={handleAcceptMatch}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl py-3 cursor-pointer flex items-center justify-center gap-1.5"
+                      onClick={() => setShowRequestModal(true)}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl py-3 cursor-pointer flex items-center justify-center gap-1.5 uppercase tracking-wider shadow-lg shadow-indigo-200"
                     >
-                      <UserCheck className="w-4 h-4" />
-                      Accept Match
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      Request Swap
                     </button>
                   </div>
 
@@ -602,27 +621,27 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
 
                   <div className="space-y-2">
                     <h3 className="text-2xl font-black text-slate-900 font-heading">
-                      Match Accepted!
+                      Request Sent!
                     </h3>
                     <p className="text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
-                      Congratulations! Your trade request has been locked in. We have created a secure workspace room and notified both participants.
+                      Your swap request has been broadcasted to <strong className="text-indigo-600">{matchedPeer?.name}</strong>. You'll be notified in the navigation bar once they respond.
                     </p>
                   </div>
 
                   <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-left text-xs text-slate-600 font-medium">
                     <div className="flex justify-between py-2 border-b border-slate-200/50">
-                      <span>Reciprocity Partner</span>
+                      <span>Recipient</span>
                       <span className="text-slate-900 font-bold">{matchedPeer?.name}</span>
                     </div>
                     <div className="flex justify-between py-2 border-b border-slate-200/50">
-                      <span>Credit Exchange Policy</span>
-                      <span className="text-slate-900 font-bold">10 Tokens / instruction swap</span>
+                      <span>Target Skill</span>
+                      <span className="text-slate-900 font-bold">{learnSkill}</span>
                     </div>
                     <div className="flex justify-between py-2">
                       <span>Status</span>
-                      <span className="text-emerald-600 font-bold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                        Channel Provisioned
+                      <span className="text-amber-600 font-bold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                        Awaiting Peer Approval
                       </span>
                     </div>
                   </div>
@@ -661,6 +680,69 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
 
         </div>
 
+        {/* Request Message Modal */}
+        <AnimatePresence>
+          {showRequestModal && (
+            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowRequestModal(false)}
+                className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+              />
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="relative bg-white rounded-[2rem] p-8 max-w-md w-full shadow-2xl border border-slate-200"
+              >
+                <div className="flex items-center gap-4 mb-6">
+                  <img src={matchedPeer?.avatarUrl} className="w-14 h-14 rounded-2xl object-cover shadow-lg" />
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 font-heading leading-tight">Request Swap</h3>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">From {matchedPeer?.name}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Message to Peer</label>
+                    <textarea 
+                      value={requestMessage}
+                      onChange={(e) => setRequestMessage(e.target.value)}
+                      placeholder={`Explain what you'd like to learn or teach...`}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 min-h-[120px] transition-all resize-none shadow-inner"
+                    />
+                  </div>
+
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-start gap-3">
+                    <Zap className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                    <div className="text-[11px] text-indigo-900 leading-relaxed font-medium">
+                      Sending a request is free. 10 tokens will only be held if they accept your request.
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={() => setShowRequestModal(false)}
+                      className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleSendSwapRequest}
+                      className="py-4 bg-indigo-600 text-white rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 flex items-center justify-center gap-2"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      Send Request
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
       </div>
     </div>
