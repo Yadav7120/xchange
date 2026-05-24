@@ -114,6 +114,38 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
 
   // Handle download simulation
   const handleDownloadSimulation = async (item: Resource) => {
+    // Check tokens before download if it's not their own resource
+    const isOwner = currentUser?.email === item.authorEmail;
+    
+    if (!isOwner && currentUser) {
+      if (currentUser.tokens < 5) {
+        alert("Not enough tokens! You need 5 tokens to access this resource. Share some notes to earn more.");
+        return;
+      }
+      
+      try {
+        const newTokens = currentUser.tokens - 5;
+        const userRef = doc(db, "users", currentUser.email);
+        await updateDoc(userRef, { tokens: newTokens });
+
+        const txId = `tx-download-${Date.now()}`;
+        const txRef = doc(db, "users", currentUser.email, "transactions", txId);
+        await setDoc(txRef, {
+          id: txId,
+          type: "spend",
+          amount: 5,
+          description: `Downloaded notes: ${item.title}`,
+          date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        });
+
+        onUpdateUser({ ...currentUser, tokens: newTokens });
+      } catch (e) {
+        console.error("Error deducting tokens for download:", e);
+        alert("Transaction failed.");
+        return;
+      }
+    }
+
     // Increment download counter
     setResources(prev => prev.map(r => r.id === item.id ? { ...r, downloads: r.downloads + 1 } : r));
     
@@ -130,7 +162,7 @@ export function WorkspacePage({ onBackToLanding, currentUser, onUpdateUser }: Wo
     if (item.fileUrl) {
       window.open(item.fileUrl, '_blank');
     } else {
-      alert(`Downloading "${item.title}"...`);
+      alert(`Downloading "${item.title}"... Note: This requires hosting setup for raw files.`);
     }
   };
 

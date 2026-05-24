@@ -33,6 +33,8 @@ import {
 } from "lucide-react";
 import { ChatMessage, NoteFile } from "../types";
 import { CurrentUser } from "./AuthPage";
+import { db } from "../firebase";
+import { doc, setDoc, updateDoc } from "firebase/firestore";
 
 interface LearningSpaceProps {
   onBackToLanding: () => void;
@@ -74,67 +76,64 @@ export function LearningSpace({ onBackToLanding, currentUser, onUpdateUser }: Le
   };
 
   // Automatic billing transaction handlers
-  const handleSessionCompletion = (role: "teacher" | "learner" | "none") => {
+  const handleSessionCompletion = async (role: "teacher" | "learner" | "none") => {
     setShowCompletionOptions(false);
 
-    if (role === "none" || !currentUser) {
+    if (role === "none" || !currentUser || !currentUser.email) {
       return;
     }
 
     const todayStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const userRef = doc(db, "users", currentUser.email);
 
     if (role === "teacher") {
-      // Earn 10 Xtokens
-      const updatedUser = {
-        ...currentUser,
-        tokens: currentUser.tokens + 10
-      };
-      
-      // Save transaction receipt
-      const savedTxs = localStorage.getItem(`xchange_tx_history_${currentUser.email}`);
-      let txs = [];
-      if (savedTxs) {
-        try { txs = JSON.parse(savedTxs); } catch (e) {}
+      try {
+        const newTokens = currentUser.tokens + 10;
+        await updateDoc(userRef, { tokens: newTokens });
+
+        const txId = `tx-completed-${Date.now()}`;
+        const txRef = doc(db, "users", currentUser.email, "transactions", txId);
+        await setDoc(txRef, {
+          id: txId,
+          type: "earn",
+          amount: 10,
+          description: `Taught ${subject} to ${peerName}`,
+          date: todayStr
+        });
+
+        const updatedUser = { ...currentUser, tokens: newTokens };
+        onUpdateUser(updatedUser);
+        alert(`Success! Automatic session calculation cleared. You earned +10 Xtokens!\nNew Balance: ${updatedUser.tokens} Xtokens.`);
+      } catch (e) {
+        console.error("Error setting session transaction", e);
+        alert("Failed to process transaction securely.");
       }
-      txs.unshift({
-        id: `tx-completed-${Date.now()}`,
-        type: "earn",
-        amount: 10,
-        description: `Taught ${subject} to ${peerName}`,
-        date: todayStr
-      });
-      localStorage.setItem(`xchange_tx_history_${currentUser.email}`, JSON.stringify(txs));
-      onUpdateUser(updatedUser);
-      
-      alert(`Success! Automatic session calculation cleared. You earned +10 Xtokens!\nNew Balance: ${updatedUser.tokens} Xtokens.`);
     } else if (role === "learner") {
-      // Spend 10 Xtokens
       if (currentUser.tokens < 10) {
         alert("Transaction Aborted! You do not have enough Xtokens in your wallet to fund this instruction. Please run a teaching session first to earn credits.");
         return;
       }
-      const updatedUser = {
-        ...currentUser,
-        tokens: currentUser.tokens - 10
-      };
-      
-      // Save transaction receipt
-      const savedTxs = localStorage.getItem(`xchange_tx_history_${currentUser.email}`);
-      let txs = [];
-      if (savedTxs) {
-        try { txs = JSON.parse(savedTxs); } catch (e) {}
+      try {
+        const newTokens = currentUser.tokens - 10;
+        await updateDoc(userRef, { tokens: newTokens });
+
+        const txId = `tx-completed-${Date.now()}`;
+        const txRef = doc(db, "users", currentUser.email, "transactions", txId);
+        await setDoc(txRef, {
+          id: txId,
+          type: "spend",
+          amount: 10,
+          description: `Learned ${subject} from ${peerName}`,
+          date: todayStr
+        });
+
+        const updatedUser = { ...currentUser, tokens: newTokens };
+        onUpdateUser(updatedUser);
+        alert(`Success! Automatic session calculation cleared. Subtracted 10 Xtokens!\nNew Balance: ${updatedUser.tokens} Xtokens.`);
+      } catch (e) {
+        console.error("Error setting session transaction", e);
+        alert("Failed to process transaction securely.");
       }
-      txs.unshift({
-        id: `tx-completed-${Date.now()}`,
-        type: "spend",
-        amount: 10,
-        description: `Learned ${subject} from ${peerName}`,
-        date: todayStr
-      });
-      localStorage.setItem(`xchange_tx_history_${currentUser.email}`, JSON.stringify(txs));
-      onUpdateUser(updatedUser);
-      
-      alert(`Success! Automatic session calculation cleared. Subtracted 10 Xtokens!\nNew Balance: ${updatedUser.tokens} Xtokens.`);
     }
   };
 

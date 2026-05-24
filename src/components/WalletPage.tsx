@@ -21,6 +21,8 @@ import {
   CreditCard
 } from "lucide-react";
 import { CurrentUser } from "./AuthPage";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { db } from "../firebase";
 
 interface Transaction {
   id: string;
@@ -41,30 +43,33 @@ export function WalletPage({ onBackToLanding, onNavigateToProfile, currentUser, 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "earn" | "spend">("all");
 
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    if (!currentUser) return [];
-    const saved = localStorage.getItem(`xchange_tx_history_${currentUser.email}`);
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
-    }
-    // Default initial transactions showing welcome tokens
-    return [
-      {
-        id: "tx-init",
-        type: "earn",
-        amount: 30,
-        description: "Welcome grant for joining xchange",
-        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-      }
-    ];
-  });
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  // Keep transactions in sync with localStorage
+  // Sync transactions from Firestore Realtime
   useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem(`xchange_tx_history_${currentUser.email}`, JSON.stringify(transactions));
+    if (!currentUser?.email) {
+      setTransactions([]);
+      return;
     }
-  }, [transactions, currentUser]);
+    
+    // Default initial transactions if needed
+    const txRef = collection(db, "users", currentUser.email, "transactions");
+    // Sort by something if needed, but since date is a string we might just sort locally below, 
+    // or rely on a timestamp field if we added one (we didn't yet). 
+    // Just pulling all for now.
+    
+    const unsubscribe = onSnapshot(txRef, (snapshot) => {
+      const txs: Transaction[] = [];
+      snapshot.forEach(doc => {
+        txs.push(doc.data() as Transaction);
+      });
+      // Sort putting newest first (basic sort by ID assuming `tx-...` format with timestamp, or fallback to date length)
+      txs.sort((a, b) => b.id.localeCompare(a.id));
+      setTransactions(txs);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   const tokens = currentUser?.tokens ?? 30;
 

@@ -28,6 +28,8 @@ import {
 import { PeerUser, SkillRequest } from "../types";
 import { mockPeers } from "../data/mockPeers";
 import { CurrentUser } from "./AuthPage";
+import { db } from "../firebase";
+import { doc, updateDoc, setDoc } from "firebase/firestore";
 
 interface MatchFinderProps {
   onBackToLanding: () => void;
@@ -71,7 +73,7 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
     setStatus("accepted"); // Borrowing accepted state for "sent" feedback
   };
 
-  const handleAcceptMatch = () => {
+  const handleAcceptMatch = async () => {
     if (!currentUser) {
       alert("Please register or log in first before initiating skill matches!");
       setStatus("idle");
@@ -83,29 +85,34 @@ export function MatchFinder({ onBackToLanding, onNavigateToProfile, currentUser,
       return;
     }
 
-    // Deduct 10 tokens automatically
-    const updatedUser = {
-      ...currentUser,
-      tokens: currentUser.tokens - 10
-    };
+    try {
+      const newTokens = currentUser.tokens - 10;
+      
+      // Update tokens in Firestore
+      const userRef = doc(db, "users", currentUser.email);
+      await updateDoc(userRef, { tokens: newTokens });
 
-    // Log transaction to history
-    const savedTxs = localStorage.getItem(`xchange_tx_history_${currentUser.email}`);
-    let txs = [];
-    if (savedTxs) {
-      try { txs = JSON.parse(savedTxs); } catch (e) {}
+      // Save transaction history conceptually
+      const txId = `tx-booked-${Date.now()}`;
+      const txRef = doc(db, "users", currentUser.email, "transactions", txId);
+      await setDoc(txRef, {
+        id: txId,
+        type: "spend",
+        amount: 10,
+        description: `Booked reciprocal class swap for ${learnSkill} with ${matchedPeer?.name || "Community Partner"}`,
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      });
+
+      // Update local state
+      onUpdateUser({
+        ...currentUser,
+        tokens: newTokens
+      });
+      setStatus("accepted");
+    } catch (e) {
+      console.error("Error updating tokens or transaction info:", e);
+      alert("Something went wrong when securing tokens.");
     }
-    txs.unshift({
-      id: `tx-booked-${Date.now()}`,
-      type: "spend",
-      amount: 10,
-      description: `Booked reciprocal class swap for ${learnSkill} with ${matchedPeer?.name || "Community Partner"}`,
-      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    });
-    localStorage.setItem(`xchange_tx_history_${currentUser.email}`, JSON.stringify(txs));
-
-    onUpdateUser(updatedUser);
-    setStatus("accepted");
   };
 
   // Active radar scan faces
